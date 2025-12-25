@@ -151,16 +151,19 @@ Spatial/geographic indexing.
 
 ## PRAGMA Helpers
 
-Convenience wrappers for common PRAGMA statements. These can all be done via `exec` today, but dedicated helpers would be cleaner.
+All PRAGMA helpers have been implemented with get/set pairs:
 
-- [ ] `db.foreignKeys true/false` - Enable/disable foreign key enforcement
-- [x] `db.setSynchronous .off/.normal/.full/.extra` - Sync mode
-- [ ] `db.cacheSize n` - Page cache size
-- [ ] `db.tempStore .default/.file/.memory` - Temp storage location
-- [ ] `db.autoVacuum .none/.full/.incremental` - Auto vacuum mode
-- [ ] `db.encoding` - Get database encoding
-- [ ] `db.pageSize` - Get/set page size
-- [ ] `db.maxPageCount` - Limit database size
+- [x] `db.setForeignKeys`/`db.getForeignKeys` - Enable/disable foreign key enforcement
+- [x] `db.setSynchronous`/`db.getSynchronous` - Sync mode (.off/.normal/.full/.extra)
+- [x] `db.setCacheSize`/`db.getCacheSize` - Page cache size
+- [x] `db.setTempStore`/`db.getTempStore` - Temp storage (.default/.file/.memory)
+- [x] `db.setAutoVacuum`/`db.getAutoVacuum` - Auto vacuum mode (.none/.full/.incremental)
+- [x] `db.getEncoding` - Get database encoding (read-only after first table)
+- [x] `db.setPageSize`/`db.getPageSize` - Page size (set before first table)
+- [x] `db.setMaxPageCount`/`db.getMaxPageCount` - Limit database size
+- [x] `db.getPageCount` - Current number of pages
+- [x] `db.getFreelistCount` - Number of free pages
+- [x] `db.incrementalVacuum` - Reclaim free pages (for incremental auto-vacuum)
 
 ## Contributing
 

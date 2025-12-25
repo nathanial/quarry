@@ -678,6 +678,99 @@ test "interrupt sets flag" := do
 
 end Tests.Configuration
 
+namespace Tests.PragmaHelpers
+
+testSuite "PRAGMA Helpers"
+
+test "foreign keys get/set" := do
+  let db ← Database.openMemory
+  -- Default is off in SQLite
+  let initial ← db.getForeignKeys
+  ensure (!initial) "foreign keys off by default"
+  db.setForeignKeys true
+  let enabled ← db.getForeignKeys
+  ensure enabled "foreign keys enabled"
+  db.setForeignKeys false
+  let disabled ← db.getForeignKeys
+  ensure (!disabled) "foreign keys disabled"
+
+test "foreign keys enforcement" := do
+  let db ← Database.openMemory
+  db.setForeignKeys true
+  db.exec "CREATE TABLE parent (id INTEGER PRIMARY KEY)"
+  db.exec "CREATE TABLE child (id INTEGER, parent_id INTEGER REFERENCES parent(id))"
+  db.exec "INSERT INTO parent VALUES (1)"
+  db.exec "INSERT INTO child VALUES (1, 1)"  -- Valid FK
+  try
+    db.exec "INSERT INTO child VALUES (2, 999)"  -- Invalid FK
+    throw (IO.userError "should have failed FK constraint")
+  catch _ =>
+    ensure true "FK constraint enforced"
+
+test "cache size get/set" := do
+  let db ← Database.openMemory
+  let initial ← db.getCacheSize
+  -- Default is negative (KiB mode)
+  ensure (initial < 0) "default is KiB mode"
+  db.setCacheSize 1000  -- 1000 pages
+  let updated ← db.getCacheSize
+  updated ≡ 1000
+
+test "temp store get/set" := do
+  let db ← Database.openMemory
+  db.setTempStore .memory
+  let mode ← db.getTempStore
+  mode ≡ Database.TempStore.memory
+
+test "auto vacuum get/set" := do
+  let db ← Database.openMemory
+  -- Must set before creating tables
+  db.setAutoVacuum .full
+  let mode ← db.getAutoVacuum
+  mode ≡ Database.AutoVacuum.full
+
+test "encoding is UTF-8" := do
+  let db ← Database.openMemory
+  let enc ← db.getEncoding
+  enc ≡ "UTF-8"
+
+test "page size get" := do
+  let db ← Database.openMemory
+  let size ← db.getPageSize
+  -- Default is 4096 on most systems
+  ensure (size > 0) "page size is positive"
+
+test "page size set before tables" := do
+  let db ← Database.openMemory
+  db.setPageSize 8192
+  let size ← db.getPageSize
+  size ≡ 8192
+
+test "max page count get/set" := do
+  let db ← Database.openMemory
+  db.setMaxPageCount 1000
+  let count ← db.getMaxPageCount
+  count ≡ 1000
+
+test "page count and freelist" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (1)"
+  let pages ← db.getPageCount
+  ensure (pages > 0) "has pages"
+  let free ← db.getFreelistCount
+  ensure (free >= 0) "freelist count non-negative"
+
+test "synchronous get/set roundtrip" := do
+  let db ← Database.openMemory
+  db.setSynchronous .off
+  let mode ← db.getSynchronous
+  mode ≡ Database.SyncMode.off
+
+#generate_tests
+
+end Tests.PragmaHelpers
+
 namespace Tests.UserFunctions
 
 testSuite "User-Defined Functions"

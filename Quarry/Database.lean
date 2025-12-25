@@ -235,6 +235,159 @@ end SyncMode
 def setSynchronous (db : Database) (mode : SyncMode) : IO Unit :=
   db.exec s!"PRAGMA synchronous={mode.toInt}"
 
+/-- Get the synchronous mode -/
+def getSynchronous (db : Database) : IO SyncMode := do
+  let rows ← db.query "PRAGMA synchronous"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 0) => return .off
+  | some (Value.integer 1) => return .normal
+  | some (Value.integer 2) => return .full
+  | some (Value.integer 3) => return .extra
+  | _ => return .full  -- Default
+
+-- ============================================================================
+-- PRAGMA Helpers
+-- ============================================================================
+
+/-- Enable or disable foreign key enforcement.
+    Note: This must be set before any tables are accessed in a session. -/
+def setForeignKeys (db : Database) (enabled : Bool) : IO Unit :=
+  db.exec s!"PRAGMA foreign_keys = {if enabled then 1 else 0}"
+
+/-- Check if foreign key enforcement is enabled -/
+def getForeignKeys (db : Database) : IO Bool := do
+  let rows ← db.query "PRAGMA foreign_keys"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return n != 0
+  | _ => return false
+
+/-- Set the page cache size (in pages, or negative for KiB).
+    Default is -2000 (2MB). -/
+def setCacheSize (db : Database) (size : Int) : IO Unit :=
+  db.exec s!"PRAGMA cache_size = {size}"
+
+/-- Get the current page cache size -/
+def getCacheSize (db : Database) : IO Int := do
+  let rows ← db.query "PRAGMA cache_size"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return n
+  | _ => return -2000  -- Default
+
+/-- Temporary storage location -/
+inductive TempStore where
+  | default  -- Use compile-time default (usually file)
+  | file     -- Store temp tables in a file
+  | memory   -- Store temp tables in memory
+  deriving Repr, BEq
+
+namespace TempStore
+def toInt : TempStore → Int
+  | .default => 0
+  | .file => 1
+  | .memory => 2
+
+def fromInt : Int → TempStore
+  | 0 => .default
+  | 1 => .file
+  | 2 => .memory
+  | _ => .default
+end TempStore
+
+/-- Set where temporary tables and indices are stored -/
+def setTempStore (db : Database) (mode : TempStore) : IO Unit :=
+  db.exec s!"PRAGMA temp_store = {mode.toInt}"
+
+/-- Get the current temporary storage mode -/
+def getTempStore (db : Database) : IO TempStore := do
+  let rows ← db.query "PRAGMA temp_store"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return TempStore.fromInt n
+  | _ => return .default
+
+/-- Auto-vacuum mode -/
+inductive AutoVacuum where
+  | none         -- No auto-vacuum (default)
+  | full         -- Full auto-vacuum after each transaction
+  | incremental  -- Incremental vacuum (must call incremental_vacuum)
+  deriving Repr, BEq
+
+namespace AutoVacuum
+def toInt : AutoVacuum → Int
+  | .none => 0
+  | .full => 1
+  | .incremental => 2
+
+def fromInt : Int → AutoVacuum
+  | 0 => .none
+  | 1 => .full
+  | 2 => .incremental
+  | _ => .none
+end AutoVacuum
+
+/-- Set the auto-vacuum mode.
+    Note: Can only be changed when the database is empty (before first table). -/
+def setAutoVacuum (db : Database) (mode : AutoVacuum) : IO Unit :=
+  db.exec s!"PRAGMA auto_vacuum = {mode.toInt}"
+
+/-- Get the current auto-vacuum mode -/
+def getAutoVacuum (db : Database) : IO AutoVacuum := do
+  let rows ← db.query "PRAGMA auto_vacuum"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return AutoVacuum.fromInt n
+  | _ => return .none
+
+/-- Run incremental vacuum to reclaim free pages.
+    Only works if auto_vacuum is set to incremental.
+    Pass 0 to vacuum all freelist pages, or n to vacuum at most n pages. -/
+def incrementalVacuum (db : Database) (pages : Nat := 0) : IO Unit :=
+  db.exec s!"PRAGMA incremental_vacuum({pages})"
+
+/-- Get the database text encoding (UTF-8, UTF-16le, or UTF-16be).
+    This is read-only after the first table is created. -/
+def getEncoding (db : Database) : IO String := do
+  let rows ← db.query "PRAGMA encoding"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.text s) => return s
+  | _ => return "UTF-8"  -- Default
+
+/-- Set the database page size (must be power of 2, 512 to 65536).
+    Can only be set before any tables are created, or via VACUUM. -/
+def setPageSize (db : Database) (size : Nat) : IO Unit :=
+  db.exec s!"PRAGMA page_size = {size}"
+
+/-- Get the current page size in bytes -/
+def getPageSize (db : Database) : IO Nat := do
+  let rows ← db.query "PRAGMA page_size"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return n.toNat
+  | _ => return 4096  -- Default
+
+/-- Set the maximum number of pages in the database file.
+    Use 0 for no limit. -/
+def setMaxPageCount (db : Database) (count : Nat) : IO Unit :=
+  db.exec s!"PRAGMA max_page_count = {count}"
+
+/-- Get the maximum page count (0 means no limit) -/
+def getMaxPageCount (db : Database) : IO Nat := do
+  let rows ← db.query "PRAGMA max_page_count"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return n.toNat
+  | _ => return 0
+
+/-- Get the current number of pages in the database -/
+def getPageCount (db : Database) : IO Nat := do
+  let rows ← db.query "PRAGMA page_count"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return n.toNat
+  | _ => return 0
+
+/-- Get the number of unused pages in the database -/
+def getFreelistCount (db : Database) : IO Nat := do
+  let rows ← db.query "PRAGMA freelist_count"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer n) => return n.toNat
+  | _ => return 0
+
 /-- Create a scalar SQL function.
     The callback receives an array of Values and returns a Value.
     Use nArgs = -1 for variadic functions. -/

@@ -56,6 +56,16 @@ opaque stmtColumnType (stmt : @& Statement) (idx : UInt32) : IO Int
 @[extern "quarry_stmt_column_name"]
 opaque stmtColumnName (stmt : @& Statement) (idx : UInt32) : IO String
 
+-- Column metadata (source table/column information)
+@[extern "quarry_stmt_column_database_name"]
+opaque stmtColumnDatabaseName (stmt : @& Statement) (idx : UInt32) : IO (Option String)
+
+@[extern "quarry_stmt_column_table_name"]
+opaque stmtColumnTableName (stmt : @& Statement) (idx : UInt32) : IO (Option String)
+
+@[extern "quarry_stmt_column_origin_name"]
+opaque stmtColumnOriginName (stmt : @& Statement) (idx : UInt32) : IO (Option String)
+
 @[extern "quarry_stmt_column_int"]
 opaque stmtColumnInt (stmt : @& Statement) (idx : UInt32) : IO Int
 

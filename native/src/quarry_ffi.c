@@ -615,6 +615,46 @@ LEAN_EXPORT lean_obj_res quarry_stmt_column_name(b_lean_obj_arg stmt_obj, uint32
     return lean_io_result_mk_ok(lean_mk_string(name ? name : ""));
 }
 
+/* Helper to create Option.none (tag 0, no fields) */
+static inline lean_object* mk_option_none(void) {
+    return lean_box(0);
+}
+
+/* Helper to create Option.some x (tag 1, one field) */
+static inline lean_object* mk_option_some(lean_object* val) {
+    lean_object* obj = lean_alloc_ctor(1, 1, 0);
+    lean_ctor_set(obj, 0, val);
+    return obj;
+}
+
+/* Column metadata - returns Option String (none if NULL) */
+LEAN_EXPORT lean_obj_res quarry_stmt_column_database_name(b_lean_obj_arg stmt_obj, uint32_t idx, lean_obj_arg world) {
+    sqlite3_stmt* stmt = (sqlite3_stmt*)lean_get_external_data(stmt_obj);
+    const char* name = sqlite3_column_database_name(stmt, (int)idx);
+    if (name == NULL) {
+        return lean_io_result_mk_ok(mk_option_none());
+    }
+    return lean_io_result_mk_ok(mk_option_some(lean_mk_string(name)));
+}
+
+LEAN_EXPORT lean_obj_res quarry_stmt_column_table_name(b_lean_obj_arg stmt_obj, uint32_t idx, lean_obj_arg world) {
+    sqlite3_stmt* stmt = (sqlite3_stmt*)lean_get_external_data(stmt_obj);
+    const char* name = sqlite3_column_table_name(stmt, (int)idx);
+    if (name == NULL) {
+        return lean_io_result_mk_ok(mk_option_none());
+    }
+    return lean_io_result_mk_ok(mk_option_some(lean_mk_string(name)));
+}
+
+LEAN_EXPORT lean_obj_res quarry_stmt_column_origin_name(b_lean_obj_arg stmt_obj, uint32_t idx, lean_obj_arg world) {
+    sqlite3_stmt* stmt = (sqlite3_stmt*)lean_get_external_data(stmt_obj);
+    const char* name = sqlite3_column_origin_name(stmt, (int)idx);
+    if (name == NULL) {
+        return lean_io_result_mk_ok(mk_option_none());
+    }
+    return lean_io_result_mk_ok(mk_option_some(lean_mk_string(name)));
+}
+
 LEAN_EXPORT lean_obj_res quarry_stmt_column_int(b_lean_obj_arg stmt_obj, uint32_t idx, lean_obj_arg world) {
     sqlite3_stmt* stmt = (sqlite3_stmt*)lean_get_external_data(stmt_obj);
     sqlite3_int64 value = sqlite3_column_int64(stmt, (int)idx);

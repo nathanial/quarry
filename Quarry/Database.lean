@@ -409,6 +409,26 @@ def createAggregateFunction (db : Database) (name : String) (nArgs : Int)
 def removeFunction (db : Database) (name : String) (nArgs : Int) : IO Unit :=
   FFI.dbRemoveFunction db.handle name nArgs.toInt32
 
+/-- Get metadata about a result column's source.
+    Returns information about which database, table, and column the result came from.
+    For expressions or computed columns, some fields may be none.
+    The statement must be prepared and have column information available. -/
+def columnMetadata (stmt : FFI.Statement) (idx : Nat) : IO ColumnMetadata := do
+  let i := idx.toUInt32
+  let database ← FFI.stmtColumnDatabaseName stmt i
+  let table ← FFI.stmtColumnTableName stmt i
+  let originName ← FFI.stmtColumnOriginName stmt i
+  return { database, table, originName }
+
+/-- Get metadata for all columns in a prepared statement -/
+def allColumnMetadata (stmt : FFI.Statement) : IO (Array ColumnMetadata) := do
+  let count ← FFI.stmtColumnCount stmt
+  let mut result : Array ColumnMetadata := #[]
+  for i in [:count.toNat] do
+    let m ← columnMetadata stmt i
+    result := result.push m
+  return result
+
 end Database
 
 end Quarry

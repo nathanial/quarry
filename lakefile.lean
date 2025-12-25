@@ -28,6 +28,7 @@ target sqlite3_o pkg : FilePath := do
     "-DSQLITE_THREADSAFE=0",
     "-DSQLITE_OMIT_LOAD_EXTENSION",
     "-DSQLITE_DEFAULT_MEMSTATUS=0",
+    "-DSQLITE_ENABLE_COLUMN_METADATA",  -- Required for column origin info
     "-fPIC",
     "-O2"
   ] #[] "cc" getLeanTrace

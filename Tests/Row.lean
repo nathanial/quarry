@@ -169,3 +169,68 @@ test "getByNameAsOption" := do
 #generate_tests
 
 end Tests.RowUtils
+
+namespace Tests.ColumnMetadata
+
+testSuite "Column Metadata"
+
+test "column metadata from table column" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  let stmt ← db.prepare "SELECT id, name FROM users"
+  let meta0 ← Database.columnMetadata stmt 0
+  let meta1 ← Database.columnMetadata stmt 1
+  -- Database should be "main" for default database
+  ensure (meta0.database == some "main") "database is main"
+  ensure (meta0.table == some "users") "table is users"
+  ensure (meta0.originName == some "id") "origin name is id"
+  ensure (meta1.originName == some "name") "second column origin is name"
+
+test "column metadata for aliased column" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (value INTEGER)"
+  let stmt ← db.prepare "SELECT value AS v FROM t"
+  let m ← Database.columnMetadata stmt 0
+  -- Origin name should be the original column name, not the alias
+  ensure (m.originName == some "value") "origin is value not alias"
+  ensure (m.table == some "t") "table is t"
+
+test "column metadata for expression" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (a INTEGER, b INTEGER)"
+  let stmt ← db.prepare "SELECT a + b FROM t"
+  let m ← Database.columnMetadata stmt 0
+  -- Expressions don't have source table/column info
+  ensure (m.table == none) "expression has no table"
+  ensure (m.originName == none) "expression has no origin"
+  ensure (!m.isAvailable) "metadata not available for expression"
+
+test "column metadata for literal" := do
+  let db ← Database.openMemory
+  let stmt ← db.prepare "SELECT 42, 'hello'"
+  let meta0 ← Database.columnMetadata stmt 0
+  let meta1 ← Database.columnMetadata stmt 1
+  ensure (meta0.table == none) "literal has no table"
+  ensure (meta1.originName == none) "literal has no origin"
+
+test "allColumnMetadata" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE items (id INTEGER, name TEXT, price REAL)"
+  let stmt ← db.prepare "SELECT id, name, price FROM items"
+  let metas ← Database.allColumnMetadata stmt
+  metas.size ≡ 3
+  ensure (metas[0]?.map (·.originName) == some (some "id")) "first is id"
+  ensure (metas[1]?.map (·.originName) == some (some "name")) "second is name"
+  ensure (metas[2]?.map (·.originName) == some (some "price")) "third is price"
+
+test "ColumnMetadata toString" := do
+  let m1 : ColumnMetadata := { database := some "main", table := some "users", originName := some "id" }
+  ensure (m1.toString == "main.users.id") "full path"
+  let m2 : ColumnMetadata := { database := none, table := some "t", originName := some "x" }
+  ensure (m2.toString == "t.x") "without database"
+  let m3 : ColumnMetadata := { database := none, table := none, originName := none }
+  ensure (m3.toString == "(expression)") "expression fallback"
+
+#generate_tests
+
+end Tests.ColumnMetadata

@@ -20,6 +20,7 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] Synchronous mode helper
 - [x] User-defined scalar functions (callbacks from C to Lean)
 - [x] User-defined aggregate functions (custom SUM/AVG/COUNT)
+- [x] Column metadata (source database/table/column info)
 
 ## High Priority
 
@@ -82,18 +83,6 @@ db.setRollbackHook do IO.println "rolling back"
 
 **SQLite API**: `sqlite3_commit_hook`, `sqlite3_rollback_hook`
 **Complexity**: Medium
-
-### Column Metadata
-Get source table/column information for query results.
-
-```lean
--- Goal API
-let meta ← stmt.columnMetadata 0
--- meta.database, meta.table, meta.originName
-```
-
-**SQLite API**: `sqlite3_column_database_name`, `sqlite3_column_table_name`, `sqlite3_column_origin_name`
-**Complexity**: Low
 
 ### Progress Handler
 Callback during long operations (for progress bars, cancellation).

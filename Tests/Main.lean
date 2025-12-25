@@ -829,6 +829,93 @@ test "aggregate empty table" := do
   -- With no rows, final is called but with no accumulated value, returns NULL
   ensure (rows.size == 1) "one row returned"
 
+-- Additional coverage tests
+
+test "createFunction3 three arguments" := do
+  let db ← Database.openMemory
+  db.createFunction3 "clamp" (fun (lo hi val : Int) =>
+    if val < lo then lo else if val > hi then hi else val)
+  let rows ← db.query "SELECT clamp(0, 10, 15), clamp(0, 10, 5), clamp(0, 10, -5)"
+  match rows[0]?.bind (·.get? 0), rows[0]?.bind (·.get? 1), rows[0]?.bind (·.get? 2) with
+  | some (Value.integer 10), some (Value.integer 5), some (Value.integer 0) =>
+    ensure true "clamp works"
+  | _, _, _ => throw (IO.userError "clamp failed")
+
+test "createIOFunction1 with IO" := do
+  let db ← Database.openMemory
+  let counterRef ← IO.mkRef (0 : Int)
+  db.createIOFunction1 "incr_counter" (fun (n : Int) => do
+    let old ← counterRef.get
+    counterRef.set (old + n)
+    return old)
+  let _ ← db.query "SELECT incr_counter(5)"
+  let _ ← db.query "SELECT incr_counter(3)"
+  let final ← counterRef.get
+  final ≡ 8
+
+test "Bool argument and result" := do
+  let db ← Database.openMemory
+  db.createFunction1 "negate" (fun (b : Bool) => !b)
+  let rows ← db.query "SELECT negate(1), negate(0)"
+  match rows[0]?.bind (·.get? 0), rows[0]?.bind (·.get? 1) with
+  | some (Value.integer 0), some (Value.integer 1) => ensure true "bool negation works"
+  | _, _ => throw (IO.userError "expected 0 and 1")
+
+test "ByteArray argument and result" := do
+  let db ← Database.openMemory
+  db.createFunction1 "blob_len" (fun (b : ByteArray) => (b.size : Int))
+  db.exec "CREATE TABLE blobs (data BLOB)"
+  db.exec "INSERT INTO blobs VALUES (X'DEADBEEF')"
+  let rows ← db.query "SELECT blob_len(data) FROM blobs"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 4) => ensure true "blob length correct"
+  | _ => throw (IO.userError "expected 4")
+
+test "raw Value passthrough" := do
+  let db ← Database.openMemory
+  -- Function that accepts any Value and returns its type name
+  db.createFunction1 "type_name" (fun (v : Value) =>
+    match v with
+    | .null => "null"
+    | .integer _ => "integer"
+    | .real _ => "real"
+    | .text _ => "text"
+    | .blob _ => "blob")
+  let rows ← db.query "SELECT type_name(42), type_name('hi'), type_name(NULL)"
+  match rows[0]?.bind (·.get? 0), rows[0]?.bind (·.get? 1), rows[0]?.bind (·.get? 2) with
+  | some (Value.text "integer"), some (Value.text "text"), some (Value.text "null") =>
+    ensure true "type detection works"
+  | _, _, _ => throw (IO.userError "type detection failed")
+
+test "multi-argument aggregate" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE pairs (a INTEGER, b INTEGER)"
+  db.exec "INSERT INTO pairs VALUES (1, 2), (3, 4), (5, 6)"
+
+  -- Aggregate that sums products: (1*2) + (3*4) + (5*6) = 2 + 12 + 30 = 44
+  db.createAggregateFunction "sum_products" 2
+    (init := pure (Value.integer 0))
+    (step := fun acc args => do
+      match acc, args[0]?, args[1]? with
+      | Value.integer sum, some (Value.integer a), some (Value.integer b) =>
+        return Value.integer (sum + a * b)
+      | _, _, _ => return acc)
+    (final := fun acc => return acc)
+
+  let rows ← db.query "SELECT sum_products(a, b) FROM pairs"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 44) => ensure true "sum of products correct"
+  | _ => throw (IO.userError "expected 44")
+
+test "function error returns null" := do
+  let db ← Database.openMemory
+  -- Function expects integer but we'll pass text - should return null due to type mismatch
+  db.createFunction1 "strict_double" (fun (x : Int) => x * 2)
+  let rows ← db.query "SELECT strict_double('not a number')"
+  match rows[0]?.bind (·.get? 0) with
+  | some Value.null => ensure true "type mismatch returns null"
+  | _ => throw (IO.userError "expected null on type mismatch")
+
 #generate_tests
 
 end Tests.UserFunctions

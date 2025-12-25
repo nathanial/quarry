@@ -44,3 +44,6 @@ import Quarry.Bind
 import Quarry.Extract
 import Quarry.Transaction
 import Quarry.Function
+import Quarry.VirtualTable
+import Quarry.VirtualTable.Array
+import Quarry.VirtualTable.Generator

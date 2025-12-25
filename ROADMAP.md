@@ -22,6 +22,7 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] User-defined aggregate functions (custom SUM/AVG/COUNT)
 - [x] Column metadata (source database/table/column info)
 - [x] Backup API (`db.backupToFile`, `db.backupTo`, incremental backup with progress)
+- [x] Virtual Tables (ArrayTable for writable in-memory tables, Generator for streaming read-only tables)
 
 ## Medium Priority
 
@@ -94,12 +95,6 @@ db.setAuthorizer fun action arg1 arg2 dbName trigger =>
 ## Low Priority / Advanced
 
 Niche features for specialized use cases.
-
-### Virtual Tables
-Custom table implementations backed by Lean code.
-
-**SQLite API**: `sqlite3_create_module_v2`
-**Complexity**: High - requires implementing multiple callbacks
 
 ### Custom Collations
 Custom string sorting rules.

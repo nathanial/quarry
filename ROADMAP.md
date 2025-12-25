@@ -18,22 +18,12 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] WAL mode helper
 - [x] Interrupt (cancel long-running queries)
 - [x] Synchronous mode helper
+- [x] User-defined scalar functions (callbacks from C to Lean)
+- [x] User-defined aggregate functions (custom SUM/AVG/COUNT)
 
 ## High Priority
 
 Features that would benefit most users.
-
-### User-Defined Functions
-Register Lean functions callable from SQL.
-
-```lean
--- Goal API
-db.createFunction "double" fun (x : Int) => x * 2
-db.query "SELECT double(value) FROM numbers"
-```
-
-**SQLite API**: `sqlite3_create_function_v2`
-**Complexity**: Medium - need to handle callbacks from C to Lean
 
 ### Backup API
 Online backup to another database file.
@@ -146,12 +136,6 @@ Custom string sorting rules.
 
 **SQLite API**: `sqlite3_create_collation_v2`
 **Complexity**: Medium
-
-### Custom Aggregates
-Create custom aggregate functions like SUM/AVG.
-
-**SQLite API**: `sqlite3_create_function_v2` with step/final callbacks
-**Complexity**: Medium-High
 
 ### Full-Text Search (FTS5)
 Full-text search capabilities.

@@ -3,6 +3,7 @@
   Low-level FFI bindings for sqlite3 database operations
 -/
 import Quarry.FFI.Types
+import Quarry.Core.Value
 
 namespace Quarry.FFI
 
@@ -50,5 +51,31 @@ opaque dbInterrupt (db : @& Database) : IO Unit
 -- Check if database connection has been interrupted
 @[extern "quarry_db_is_interrupted"]
 opaque dbIsInterrupted (db : @& Database) : IO Bool
+
+-- User-Defined Functions
+
+/-- Create a scalar SQL function.
+    The callback receives an array of Values and returns a Value.
+    Use nArgs = -1 for variadic functions. -/
+@[extern "quarry_db_create_scalar_function"]
+opaque dbCreateScalarFunction (db : @& Database) (name : @& String)
+    (nArgs : Int32) (callback : Array Quarry.Value → IO Quarry.Value) : IO Unit
+
+/-- Create an aggregate SQL function (like SUM, AVG, COUNT).
+    - init: Returns the initial accumulator value
+    - step: Called for each row, updates accumulator
+    - final: Called after all rows, produces final result -/
+@[extern "quarry_db_create_aggregate_function"]
+opaque dbCreateAggregateFunction (db : @& Database) (name : @& String)
+    (nArgs : Int32)
+    (init : IO Quarry.Value)
+    (step : Quarry.Value → Array Quarry.Value → IO Quarry.Value)
+    (final : Quarry.Value → IO Quarry.Value)
+    : IO Unit
+
+/-- Remove a previously registered function (scalar or aggregate) -/
+@[extern "quarry_db_remove_function"]
+opaque dbRemoveFunction (db : @& Database) (name : @& String)
+    (nArgs : Int32) : IO Unit
 
 end Quarry.FFI

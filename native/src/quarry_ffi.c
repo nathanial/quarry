@@ -166,6 +166,319 @@ LEAN_EXPORT lean_obj_res quarry_db_is_interrupted(b_lean_obj_arg db_obj, lean_ob
 }
 
 /* ========================================================================== */
+/* User-Defined Functions                                                      */
+/* ========================================================================== */
+
+/* Context structure for scalar UDFs */
+typedef struct {
+    lean_object* callback;  /* Lean function: Array Value -> IO Value */
+    int nArgs;
+} ScalarUdfContext;
+
+/* Context structure for aggregate UDFs */
+typedef struct {
+    lean_object* init;      /* IO Value - initial accumulator */
+    lean_object* step;      /* Value -> Array Value -> IO Value */
+    lean_object* final_fn;  /* Value -> IO Value */
+    int nArgs;
+} AggregateUdfContext;
+
+/* Destructor for scalar UDF context */
+static void scalar_udf_destroy(void* ptr) {
+    ScalarUdfContext* ctx = (ScalarUdfContext*)ptr;
+    if (ctx) {
+        if (ctx->callback) lean_dec(ctx->callback);
+        free(ctx);
+    }
+}
+
+/* Destructor for aggregate UDF context */
+static void aggregate_udf_destroy(void* ptr) {
+    AggregateUdfContext* ctx = (AggregateUdfContext*)ptr;
+    if (ctx) {
+        if (ctx->init) lean_dec(ctx->init);
+        if (ctx->step) lean_dec(ctx->step);
+        if (ctx->final_fn) lean_dec(ctx->final_fn);
+        free(ctx);
+    }
+}
+
+/* Convert sqlite3_value to Lean Value
+ * Value is defined as:
+ *   inductive Value where
+ *     | null     -- tag 0
+ *     | integer  -- tag 1
+ *     | real     -- tag 2
+ *     | text     -- tag 3
+ *     | blob     -- tag 4
+ */
+static lean_object* sqlite_value_to_lean(sqlite3_value* val) {
+    int type = sqlite3_value_type(val);
+    switch (type) {
+        case SQLITE_INTEGER: {
+            int64_t n = sqlite3_value_int64(val);
+            lean_object* obj = lean_alloc_ctor(1, 1, 0);  /* tag 1 = integer */
+            lean_ctor_set(obj, 0, lean_int64_to_int(n));
+            return obj;
+        }
+        case SQLITE_FLOAT: {
+            double d = sqlite3_value_double(val);
+            /* Float is stored as a scalar field, not an object field */
+            lean_object* obj = lean_alloc_ctor(2, 0, sizeof(double));  /* tag 2 = real */
+            lean_ctor_set_float(obj, 0, d);
+            return obj;
+        }
+        case SQLITE_TEXT: {
+            const char* s = (const char*)sqlite3_value_text(val);
+            int len = sqlite3_value_bytes(val);
+            lean_object* obj = lean_alloc_ctor(3, 1, 0);  /* tag 3 = text */
+            lean_ctor_set(obj, 0, lean_mk_string_from_bytes(s, len));
+            return obj;
+        }
+        case SQLITE_BLOB: {
+            const void* data = sqlite3_value_blob(val);
+            int size = sqlite3_value_bytes(val);
+            lean_object* arr = lean_alloc_sarray(1, size, size);
+            if (data && size > 0) {
+                memcpy(lean_sarray_cptr(arr), data, size);
+            }
+            lean_object* obj = lean_alloc_ctor(4, 1, 0);  /* tag 4 = blob */
+            lean_ctor_set(obj, 0, arr);
+            return obj;
+        }
+        default:  /* SQLITE_NULL */
+            return lean_alloc_ctor(0, 0, 0);  /* tag 0 = null */
+    }
+}
+
+/* Set sqlite3 result from Lean Value */
+static void lean_value_to_sqlite_result(sqlite3_context* ctx, lean_object* val) {
+    unsigned tag = lean_obj_tag(val);
+    switch (tag) {
+        case 0:  /* null */
+            sqlite3_result_null(ctx);
+            break;
+        case 1: {  /* integer */
+            lean_object* n = lean_ctor_get(val, 0);
+            sqlite3_result_int64(ctx, lean_int64_of_int(n));
+            break;
+        }
+        case 2: {  /* real */
+            /* Float is stored as a scalar field, not an object field */
+            double d = lean_ctor_get_float(val, 0);
+            sqlite3_result_double(ctx, d);
+            break;
+        }
+        case 3: {  /* text */
+            lean_object* s = lean_ctor_get(val, 0);
+            const char* str = lean_string_cstr(s);
+            size_t len = lean_string_size(s) - 1;
+            sqlite3_result_text(ctx, str, (int)len, SQLITE_TRANSIENT);
+            break;
+        }
+        case 4: {  /* blob */
+            lean_object* arr = lean_ctor_get(val, 0);
+            size_t size = lean_sarray_size(arr);
+            uint8_t* data = lean_sarray_cptr(arr);
+            sqlite3_result_blob(ctx, data, (int)size, SQLITE_TRANSIENT);
+            break;
+        }
+    }
+}
+
+/* Build a Lean Array Value from sqlite3_value arguments */
+static lean_object* build_args_array(int argc, sqlite3_value** argv) {
+    lean_object* args = lean_mk_empty_array();
+    for (int i = 0; i < argc; i++) {
+        lean_object* val = sqlite_value_to_lean(argv[i]);
+        args = lean_array_push(args, val);
+    }
+    return args;
+}
+
+/* Scalar function callback - called by SQLite when UDF is invoked */
+static void scalar_function_callback(
+    sqlite3_context* ctx,
+    int argc,
+    sqlite3_value** argv
+) {
+    ScalarUdfContext* udf = (ScalarUdfContext*)sqlite3_user_data(ctx);
+
+    /* Build Array of Values */
+    lean_object* args = build_args_array(argc, argv);
+
+    /* Call Lean function: callback : Array Value -> IO Value
+     * First apply the Array argument to get IO Value (a thunk),
+     * then apply the world token to actually run it. */
+    lean_inc(udf->callback);
+    lean_object* io_action = lean_apply_1(udf->callback, args);
+    lean_object* io_result = lean_apply_1(io_action, lean_io_mk_world());
+
+    /* Extract result from IO */
+    if (lean_io_result_is_ok(io_result)) {
+        lean_object* value = lean_io_result_get_value(io_result);
+        lean_value_to_sqlite_result(ctx, value);
+        /* Note: value is borrowed from io_result, don't dec separately */
+    } else {
+        sqlite3_result_error(ctx, "Lean function error", -1);
+    }
+    lean_dec(io_result);
+}
+
+/* Aggregate step callback - called by SQLite for each row */
+static void aggregate_step_callback(
+    sqlite3_context* ctx,
+    int argc,
+    sqlite3_value** argv
+) {
+    AggregateUdfContext* udf = (AggregateUdfContext*)sqlite3_user_data(ctx);
+
+    /* Get or initialize accumulator (stored in SQLite's aggregate context) */
+    lean_object** acc_ptr = (lean_object**)sqlite3_aggregate_context(ctx, sizeof(lean_object*));
+    if (*acc_ptr == NULL) {
+        /* First call - get initial value from init function */
+        lean_inc(udf->init);
+        lean_object* io_result = lean_apply_1(udf->init, lean_io_mk_world());
+        if (lean_io_result_is_ok(io_result)) {
+            *acc_ptr = lean_io_result_get_value(io_result);
+            lean_inc(*acc_ptr);  /* Keep reference in aggregate context */
+        }
+        lean_dec(io_result);
+    }
+
+    if (*acc_ptr == NULL) return;  /* Init failed */
+
+    /* Build Array of Values from arguments */
+    lean_object* args = build_args_array(argc, argv);
+
+    /* Call step: Value -> Array Value -> IO Value */
+    lean_inc(udf->step);
+    lean_inc(*acc_ptr);
+    lean_object* io_result = lean_apply_3(udf->step, *acc_ptr, args, lean_io_mk_world());
+
+    if (lean_io_result_is_ok(io_result)) {
+        lean_dec(*acc_ptr);  /* Release old accumulator */
+        *acc_ptr = lean_io_result_get_value(io_result);
+        lean_inc(*acc_ptr);  /* Keep new accumulator */
+    }
+    lean_dec(io_result);
+}
+
+/* Aggregate final callback - called by SQLite after all rows processed */
+static void aggregate_final_callback(sqlite3_context* ctx) {
+    AggregateUdfContext* udf = (AggregateUdfContext*)sqlite3_user_data(ctx);
+
+    lean_object** acc_ptr = (lean_object**)sqlite3_aggregate_context(ctx, 0);
+    if (acc_ptr == NULL || *acc_ptr == NULL) {
+        /* No rows - return NULL */
+        sqlite3_result_null(ctx);
+        return;
+    }
+
+    /* Call final: Value -> IO Value */
+    lean_inc(udf->final_fn);
+    lean_inc(*acc_ptr);
+    lean_object* io_result = lean_apply_2(udf->final_fn, *acc_ptr, lean_io_mk_world());
+
+    if (lean_io_result_is_ok(io_result)) {
+        lean_object* value = lean_io_result_get_value(io_result);
+        lean_value_to_sqlite_result(ctx, value);
+        /* Note: value is borrowed from io_result, don't dec separately */
+    } else {
+        sqlite3_result_error(ctx, "Lean aggregate final error", -1);
+    }
+    lean_dec(io_result);
+
+    /* Cleanup accumulator */
+    lean_dec(*acc_ptr);
+    *acc_ptr = NULL;
+}
+
+/* Register a scalar function */
+LEAN_EXPORT lean_obj_res quarry_db_create_scalar_function(
+    b_lean_obj_arg db_obj,
+    b_lean_obj_arg name_obj,
+    int32_t nArgs,
+    lean_obj_arg callback,  /* Array Value -> IO Value */
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    const char* name = lean_string_cstr(name_obj);
+
+    ScalarUdfContext* ctx = (ScalarUdfContext*)malloc(sizeof(ScalarUdfContext));
+    ctx->callback = callback;
+    ctx->nArgs = nArgs;
+
+    int rc = sqlite3_create_function_v2(
+        db, name, nArgs, SQLITE_UTF8, ctx,
+        scalar_function_callback,  /* xFunc */
+        NULL, NULL,                /* xStep, xFinal (not used for scalar) */
+        scalar_udf_destroy
+    );
+
+    if (rc != SQLITE_OK) {
+        scalar_udf_destroy(ctx);
+        return mk_sqlite_error(db);
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* Register an aggregate function */
+LEAN_EXPORT lean_obj_res quarry_db_create_aggregate_function(
+    b_lean_obj_arg db_obj,
+    b_lean_obj_arg name_obj,
+    int32_t nArgs,
+    lean_obj_arg init,      /* IO Value */
+    lean_obj_arg step,      /* Value -> Array Value -> IO Value */
+    lean_obj_arg final_fn,  /* Value -> IO Value */
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    const char* name = lean_string_cstr(name_obj);
+
+    AggregateUdfContext* ctx = (AggregateUdfContext*)malloc(sizeof(AggregateUdfContext));
+    ctx->init = init;
+    ctx->step = step;
+    ctx->final_fn = final_fn;
+    ctx->nArgs = nArgs;
+
+    int rc = sqlite3_create_function_v2(
+        db, name, nArgs, SQLITE_UTF8, ctx,
+        NULL,                       /* xFunc (not used for aggregate) */
+        aggregate_step_callback,    /* xStep */
+        aggregate_final_callback,   /* xFinal */
+        aggregate_udf_destroy
+    );
+
+    if (rc != SQLITE_OK) {
+        aggregate_udf_destroy(ctx);
+        return mk_sqlite_error(db);
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* Remove a function (works for both scalar and aggregate) */
+LEAN_EXPORT lean_obj_res quarry_db_remove_function(
+    b_lean_obj_arg db_obj,
+    b_lean_obj_arg name_obj,
+    int32_t nArgs,
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    const char* name = lean_string_cstr(name_obj);
+
+    int rc = sqlite3_create_function_v2(
+        db, name, nArgs, SQLITE_UTF8,
+        NULL, NULL, NULL, NULL, NULL
+    );
+
+    if (rc != SQLITE_OK) {
+        return mk_sqlite_error(db);
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* ========================================================================== */
 /* Statement Operations                                                        */
 /* ========================================================================== */
 

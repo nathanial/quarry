@@ -235,6 +235,27 @@ end SyncMode
 def setSynchronous (db : Database) (mode : SyncMode) : IO Unit :=
   db.exec s!"PRAGMA synchronous={mode.toInt}"
 
+/-- Create a scalar SQL function.
+    The callback receives an array of Values and returns a Value.
+    Use nArgs = -1 for variadic functions. -/
+def createScalarFunction (db : Database) (name : String) (nArgs : Int)
+    (f : Array Value → IO Value) : IO Unit :=
+  FFI.dbCreateScalarFunction db.handle name nArgs.toInt32 f
+
+/-- Create an aggregate SQL function (like SUM, AVG, COUNT).
+    - init: Returns the initial accumulator value
+    - step: Called for each row, takes current accumulator and row values, returns new accumulator
+    - final: Called after all rows, takes final accumulator and returns result -/
+def createAggregateFunction (db : Database) (name : String) (nArgs : Int)
+    (init : IO Value)
+    (step : Value → Array Value → IO Value)
+    (final : Value → IO Value) : IO Unit :=
+  FFI.dbCreateAggregateFunction db.handle name nArgs.toInt32 init step final
+
+/-- Remove a previously registered function (scalar or aggregate) -/
+def removeFunction (db : Database) (name : String) (nArgs : Int) : IO Unit :=
+  FFI.dbRemoveFunction db.handle name nArgs.toInt32
+
 end Database
 
 end Quarry

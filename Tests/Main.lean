@@ -678,6 +678,161 @@ test "interrupt sets flag" := do
 
 end Tests.Configuration
 
+namespace Tests.UserFunctions
+
+testSuite "User-Defined Functions"
+
+-- Scalar function tests
+
+test "scalar function double" := do
+  let db ← Database.openMemory
+  db.createScalarFunction "double" 1 fun args => do
+    match args[0]? with
+    | some (Value.integer n) => return Value.integer (n * 2)
+    | _ => return Value.null
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (21)"
+  let rows ← db.query "SELECT double(x) FROM t"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 42) => ensure true "doubled"
+  | _ => throw (IO.userError "expected 42")
+
+test "type-safe function add" := do
+  let db ← Database.openMemory
+  db.createFunction2 "my_add" (fun (a b : Int) => a + b)
+  let rows ← db.query "SELECT my_add(1, 2)"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 3) => ensure true "added"
+  | _ => throw (IO.userError "expected 3")
+
+test "string function concat" := do
+  let db ← Database.openMemory
+  db.createFunction2 "myconcat" (fun (a b : String) => a ++ b)
+  let rows ← db.query "SELECT myconcat('hello', ' world')"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.text "hello world") => ensure true "concatenated"
+  | _ => throw (IO.userError "expected 'hello world'")
+
+test "function with null handling" := do
+  let db ← Database.openMemory
+  db.createFunction1 "safe_double" (fun (x : Option Int) =>
+    x.map (· * 2))
+  let rows ← db.query "SELECT safe_double(NULL)"
+  match rows[0]?.bind (·.get? 0) with
+  | some Value.null => ensure true "null preserved"
+  | _ => throw (IO.userError "expected null")
+
+test "variadic function sum_all" := do
+  let db ← Database.openMemory
+  db.createScalarFunction "sum_all" (-1) fun args => do
+    let mut total : Int := 0
+    for arg in args do
+      match arg with
+      | .integer n => total := total + n
+      | _ => pure ()
+    return Value.integer total
+  let rows ← db.query "SELECT sum_all(1, 2, 3, 4, 5)"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 15) => ensure true "summed"
+  | _ => throw (IO.userError "expected 15")
+
+test "remove function" := do
+  let db ← Database.openMemory
+  db.createFunction1 "temp_fn" (fun (x : Int) => x)
+  let _ ← db.query "SELECT temp_fn(1)"  -- Should work
+  db.removeFunction "temp_fn" 1
+  try
+    let _ ← db.query "SELECT temp_fn(1)"  -- Should fail
+    throw (IO.userError "should have failed")
+  catch _ =>
+    ensure true "function removed"
+
+test "scalar function with float" := do
+  let db ← Database.openMemory
+  db.createFunction1 "half" (fun (x : Float) => x / 2.0)
+  let rows ← db.query "SELECT half(10.0)"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.real f) =>
+    if (f - 5.0).abs < 0.01 then ensure true "halved"
+    else throw (IO.userError s!"expected 5.0, got {f}")
+  | _ => throw (IO.userError "expected real")
+
+-- Aggregate function tests
+
+test "aggregate product" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE nums (v INTEGER)"
+  db.exec "INSERT INTO nums VALUES (2), (3), (4)"
+
+  db.createAggregateFunction "product" 1
+    (init := pure (Value.integer 1))
+    (step := fun acc args => do
+      match acc, args[0]? with
+      | Value.integer a, some (Value.integer b) => return Value.integer (a * b)
+      | _, _ => return acc)
+    (final := fun acc => return acc)
+
+  let rows ← db.query "SELECT product(v) FROM nums"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.integer 24) => ensure true "product computed"
+  | _ => throw (IO.userError "expected 24")
+
+test "aggregate string concat" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE words (w TEXT)"
+  db.exec "INSERT INTO words VALUES ('a'), ('b'), ('c')"
+
+  db.createAggregateFunction "concat_all" 1
+    (init := pure (Value.text ""))
+    (step := fun acc args => do
+      match acc, args[0]? with
+      | Value.text a, some (Value.text b) => return Value.text (a ++ b)
+      | _, _ => return acc)
+    (final := fun acc => return acc)
+
+  let rows ← db.query "SELECT concat_all(w) FROM words"
+  match rows[0]?.bind (·.get? 0) with
+  | some (Value.text "abc") => ensure true "concat computed"
+  | _ => throw (IO.userError "expected 'abc'")
+
+test "aggregate with GROUP BY" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE sales (category TEXT, amount INTEGER)"
+  db.exec "INSERT INTO sales VALUES ('A', 10), ('A', 20), ('B', 5)"
+
+  db.createAggregateFunction "my_sum" 1
+    (init := pure (Value.integer 0))
+    (step := fun acc args => do
+      match acc, args[0]? with
+      | Value.integer a, some (Value.integer b) => return Value.integer (a + b)
+      | _, _ => return acc)
+    (final := fun acc => return acc)
+
+  let rows ← db.query "SELECT category, my_sum(amount) FROM sales GROUP BY category ORDER BY category"
+  match rows[0]?.bind (·.get? 1), rows[1]?.bind (·.get? 1) with
+  | some (Value.integer 30), some (Value.integer 5) => ensure true "grouped sums correct"
+  | _, _ => throw (IO.userError "expected 30 and 5")
+
+test "aggregate empty table" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE empty (v INTEGER)"
+
+  db.createAggregateFunction "my_count" 1
+    (init := pure (Value.integer 0))
+    (step := fun acc _ => do
+      match acc with
+      | Value.integer n => return Value.integer (n + 1)
+      | _ => return acc)
+    (final := fun acc => return acc)
+
+  let rows ← db.query "SELECT my_count(v) FROM empty"
+  -- With no rows, final is called but with no accumulated value, returns NULL
+  ensure (rows.size == 1) "one row returned"
+
+#generate_tests
+
+end Tests.UserFunctions
+
 def main : IO UInt32 := do
   IO.println "Quarry Library Tests"
   IO.println "===================="

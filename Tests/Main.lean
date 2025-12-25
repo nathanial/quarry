@@ -262,6 +262,362 @@ test "access by name case insensitive" := do
 
 end Tests.Row
 
+namespace Tests.Binding
+
+testSuite "Parameter Binding"
+
+test "positional binding integer" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (?1)"
+  bind stmt 1 (42 : Int)
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT x FROM t"
+  rows.size ≡ 1
+
+test "positional binding multiple" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (a INTEGER, b TEXT, c REAL)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (?1, ?2, ?3)"
+  bindAll stmt #[Value.integer 1, Value.text "hello", Value.real 3.14]
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT * FROM t"
+  rows.size ≡ 1
+
+test "named binding colon style" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (:val)"
+  bindNamed stmt ":val" (Value.integer 99)
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT x FROM t"
+  rows.size ≡ 1
+
+test "named binding at style" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x TEXT)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (@msg)"
+  bindNamed stmt "@msg" (Value.text "test")
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT x FROM t"
+  rows.size ≡ 1
+
+test "bindAllNamed" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (a INTEGER, b TEXT)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (:a, :b)"
+  bindAllNamed stmt [
+    (":a", Value.integer 42),
+    (":b", Value.text "hello")
+  ]
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT * FROM t"
+  rows.size ≡ 1
+
+test "reset and rebind" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (?1)"
+  bind stmt 1 (1 : Int)
+  let _ ← FFI.stmtStep stmt
+  resetStmt stmt
+  clearBindings stmt
+  bind stmt 1 (2 : Int)
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT * FROM t"
+  rows.size ≡ 2
+
+test "parameter count" := do
+  let db ← Database.openMemory
+  let stmt ← db.prepare "SELECT ?1, ?2, ?3"
+  let count ← parameterCount stmt
+  count ≡ 3
+
+test "bind null value" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (?1)"
+  bindValue stmt 1 Value.null
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.get? 0 with
+    | some Value.null => ensure true "null bound"
+    | _ => throw (IO.userError "expected null")
+  | none => throw (IO.userError "no row")
+
+#generate_tests
+
+end Tests.Binding
+
+namespace Tests.TransactionVariants
+
+testSuite "Transaction Variants"
+
+test "read transaction" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (1)"
+  db.readTransaction do
+    let rows ← db.query "SELECT * FROM t"
+    rows.size ≡ 1
+
+test "write transaction" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.writeTransaction do
+    db.exec "INSERT INTO t VALUES (1)"
+  let rows ← db.query "SELECT * FROM t"
+  rows.size ≡ 1
+
+test "exclusive transaction" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exclusiveTransaction do
+    db.exec "INSERT INTO t VALUES (1)"
+  let rows ← db.query "SELECT * FROM t"
+  rows.size ≡ 1
+
+#generate_tests
+
+end Tests.TransactionVariants
+
+namespace Tests.TypeConversion
+
+testSuite "Type Conversion"
+
+test "FromSql Nat" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (42)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := Nat) 0 with
+    | .ok n => n ≡ 42
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+test "FromSql Float" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x REAL)"
+  db.exec "INSERT INTO t VALUES (3.14)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := Float) 0 with
+    | .ok f => ensure ((f - 3.14).abs < 0.01) "float matches"
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+test "FromSql Bool true" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (1)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := Bool) 0 with
+    | .ok b => b ≡ true
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+test "FromSql Bool false" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (0)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := Bool) 0 with
+    | .ok b => b ≡ false
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+test "FromSql ByteArray" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x BLOB)"
+  db.exec "INSERT INTO t VALUES (X'DEADBEEF')"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := ByteArray) 0 with
+    | .ok b => b.size ≡ 4
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+test "FromSql Value passthrough" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (42)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := Value) 0 with
+    | .ok (Value.integer 42) => ensure true "passthrough works"
+    | .ok v => throw (IO.userError s!"unexpected: {v}")
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+test "ToSql Nat via binding" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (?1)"
+  bind stmt 1 (100 : Nat)
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.get? 0 with
+    | some (Value.integer 100) => ensure true "Nat bound"
+    | _ => throw (IO.userError "expected 100")
+  | none => throw (IO.userError "no row")
+
+test "ToSql Bool via binding" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  let stmt ← db.prepare "INSERT INTO t VALUES (?1)"
+  bind stmt 1 true
+  let _ ← FFI.stmtStep stmt
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.get? 0 with
+    | some (Value.integer 1) => ensure true "Bool bound as 1"
+    | _ => throw (IO.userError "expected 1")
+  | none => throw (IO.userError "no row")
+
+#generate_tests
+
+end Tests.TypeConversion
+
+namespace Tests.ValueUtils
+
+testSuite "Value Utilities"
+
+test "asInt? on integer" := do
+  let v := Value.integer 42
+  match v.asInt? with
+  | some 42 => ensure true "asInt? works"
+  | _ => throw (IO.userError "expected 42")
+
+test "asFloat? on real" := do
+  let v := Value.real 3.14
+  match v.asFloat? with
+  | some f => ensure ((f - 3.14).abs < 0.01) "asFloat? works"
+  | none => throw (IO.userError "expected float")
+
+test "asFloat? coerces integer" := do
+  let v := Value.integer 5
+  match v.asFloat? with
+  | some f => ensure ((f - 5.0).abs < 0.01) "coercion works"
+  | none => throw (IO.userError "expected float")
+
+test "asString? on text" := do
+  let v := Value.text "hello"
+  match v.asString? with
+  | some "hello" => ensure true "asString? works"
+  | _ => throw (IO.userError "expected hello")
+
+test "isNull" := do
+  ensure Value.null.isNull "null is null"
+  ensure (!(Value.integer 0).isNull) "integer is not null"
+
+test "BEq Value" := do
+  ensure (Value.integer 42 == Value.integer 42) "integers equal"
+  ensure (Value.text "a" == Value.text "a") "texts equal"
+  ensure (Value.null == Value.null) "nulls equal"
+  ensure (!(Value.integer 1 == Value.integer 2)) "different integers"
+
+#generate_tests
+
+end Tests.ValueUtils
+
+namespace Tests.RowUtils
+
+testSuite "Row Utilities"
+
+test "row size" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (a INTEGER, b TEXT, c REAL)"
+  db.exec "INSERT INTO t VALUES (1, 'hi', 3.14)"
+  let rows ← db.query "SELECT * FROM t"
+  match rows[0]? with
+  | some row => row.size ≡ 3
+  | none => throw (IO.userError "no row")
+
+test "columnName by index" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE users (id INTEGER, name TEXT)"
+  db.exec "INSERT INTO users VALUES (1, 'Alice')"
+  let rows ← db.query "SELECT id, name FROM users"
+  match rows[0]? with
+  | some row =>
+    match row.columnName 0, row.columnName 1 with
+    | some "id", some "name" => ensure true "column names correct"
+    | _, _ => throw (IO.userError "unexpected column names")
+  | none => throw (IO.userError "no row")
+
+test "getByNameAsOption" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (NULL)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getByNameAsOption (α := Int) "x" with
+    | .ok none => ensure true "null as none"
+    | .ok (some _) => throw (IO.userError "expected none")
+    | .error e => throw (IO.userError s!"failed: {e}")
+  | none => throw (IO.userError "no row")
+
+#generate_tests
+
+end Tests.RowUtils
+
+namespace Tests.ErrorHandling
+
+testSuite "Error Handling"
+
+test "bad SQL syntax error" := do
+  let db ← Database.openMemory
+  try
+    db.exec "NOT VALID SQL"
+    throw (IO.userError "should have failed")
+  catch _ =>
+    ensure true "caught error"
+
+test "columnNotFound error" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x INTEGER)"
+  db.exec "INSERT INTO t VALUES (1)"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getByNameAs (α := Int) "nonexistent" with
+    | .error (.columnNotFound _) => ensure true "got columnNotFound"
+    | .ok _ => throw (IO.userError "should have failed")
+    | .error e => throw (IO.userError s!"wrong error: {e}")
+  | none => throw (IO.userError "no row")
+
+test "type extraction error" := do
+  let db ← Database.openMemory
+  db.exec "CREATE TABLE t (x TEXT)"
+  db.exec "INSERT INTO t VALUES ('not a number')"
+  let rows ← db.query "SELECT x FROM t"
+  match rows[0]? with
+  | some row =>
+    match row.getAs (α := Int) 0 with
+    | .error (.typeError _ _) => ensure true "got typeError"
+    | .ok _ => throw (IO.userError "should have failed")
+    | .error e => throw (IO.userError s!"wrong error: {e}")
+  | none => throw (IO.userError "no row")
+
+#generate_tests
+
+end Tests.ErrorHandling
+
 def main : IO UInt32 := do
   IO.println "Quarry Library Tests"
   IO.println "===================="

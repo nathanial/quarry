@@ -16,6 +16,8 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] Last insert rowid / changes count
 - [x] Busy timeout
 - [x] WAL mode helper
+- [x] Interrupt (cancel long-running queries)
+- [x] Synchronous mode helper
 
 ## High Priority
 
@@ -48,17 +50,6 @@ backup.finish
 
 **SQLite API**: `sqlite3_backup_init`, `sqlite3_backup_step`, `sqlite3_backup_finish`
 **Complexity**: Medium
-
-### Interrupt
-Cancel long-running queries from another thread.
-
-```lean
--- Goal API
-db.interrupt  -- cancels current operation
-```
-
-**SQLite API**: `sqlite3_interrupt`
-**Complexity**: Low - single FFI function
 
 ## Medium Priority
 
@@ -179,7 +170,7 @@ Spatial/geographic indexing.
 Convenience wrappers for common PRAGMA statements. These can all be done via `exec` today, but dedicated helpers would be cleaner.
 
 - [ ] `db.foreignKeys true/false` - Enable/disable foreign key enforcement
-- [ ] `db.synchronous .off/.normal/.full` - Sync mode
+- [x] `db.setSynchronous .off/.normal/.full/.extra` - Sync mode
 - [ ] `db.cacheSize n` - Page cache size
 - [ ] `db.tempStore .default/.file/.memory` - Temp storage location
 - [ ] `db.autoVacuum .none/.full/.incremental` - Auto vacuum mode

@@ -141,6 +141,18 @@ def prepare (db : Database) (sql : String) : IO FFI.Statement :=
 def busyTimeout (db : Database) (ms : UInt32) : IO Unit :=
   FFI.dbBusyTimeout db.handle ms
 
+/-- Interrupt a long-running query.
+    This can be called from another thread to cancel the current operation.
+    The interrupted operation will return SQLITE_INTERRUPT.
+    This is safe to call even if no operation is in progress. -/
+def interrupt (db : Database) : IO Unit :=
+  FFI.dbInterrupt db.handle
+
+/-- Check if the database connection has been interrupted.
+    Returns true if sqlite3_interrupt has been called and not yet cleared. -/
+def isInterrupted (db : Database) : IO Bool :=
+  FFI.dbIsInterrupted db.handle
+
 /-- Journal mode for the database -/
 inductive JournalMode where
   | delete    -- Default: delete journal after commit

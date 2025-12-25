@@ -153,6 +153,18 @@ LEAN_EXPORT lean_obj_res quarry_db_busy_timeout(b_lean_obj_arg db_obj, uint32_t 
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+LEAN_EXPORT lean_obj_res quarry_db_interrupt(b_lean_obj_arg db_obj, lean_obj_arg world) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    sqlite3_interrupt(db);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res quarry_db_is_interrupted(b_lean_obj_arg db_obj, lean_obj_arg world) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    int interrupted = sqlite3_is_interrupted(db);
+    return lean_io_result_mk_ok(lean_box(interrupted ? 1 : 0));
+}
+
 /* ========================================================================== */
 /* Statement Operations                                                        */
 /* ========================================================================== */

@@ -43,4 +43,12 @@ opaque dbTotalChanges (db : @& Database) : IO Int
 @[extern "quarry_db_busy_timeout"]
 opaque dbBusyTimeout (db : @& Database) (ms : UInt32) : IO Unit
 
+-- Interrupt a long-running query
+@[extern "quarry_db_interrupt"]
+opaque dbInterrupt (db : @& Database) : IO Unit
+
+-- Check if database connection has been interrupted
+@[extern "quarry_db_is_interrupted"]
+opaque dbIsInterrupted (db : @& Database) : IO Bool
+
 end Quarry.FFI

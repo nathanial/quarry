@@ -14,6 +14,13 @@
 
 static lean_external_class* g_database_class = NULL;
 static lean_external_class* g_statement_class = NULL;
+static lean_external_class* g_backup_class = NULL;
+
+/* Wrapper for backup to track if it's been explicitly finished */
+typedef struct {
+    sqlite3_backup* backup;
+    int finished;  /* 1 if finish was called explicitly */
+} BackupWrapper;
 
 /* ========================================================================== */
 /* Finalizers                                                                  */
@@ -33,6 +40,16 @@ static void statement_finalizer(void* ptr) {
     }
 }
 
+static void backup_finalizer(void* ptr) {
+    BackupWrapper* wrapper = (BackupWrapper*)ptr;
+    if (wrapper) {
+        if (!wrapper->finished && wrapper->backup) {
+            sqlite3_backup_finish(wrapper->backup);
+        }
+        free(wrapper);
+    }
+}
+
 static void noop_foreach(void* ptr, b_lean_obj_arg arg) {
     (void)ptr;
     (void)arg;
@@ -46,6 +63,7 @@ static void init_external_classes(void) {
     if (g_database_class == NULL) {
         g_database_class = lean_register_external_class(database_finalizer, noop_foreach);
         g_statement_class = lean_register_external_class(statement_finalizer, noop_foreach);
+        g_backup_class = lean_register_external_class(backup_finalizer, noop_foreach);
     }
 }
 
@@ -699,4 +717,94 @@ LEAN_EXPORT lean_obj_res quarry_stmt_sql(b_lean_obj_arg stmt_obj, lean_obj_arg w
     sqlite3_stmt* stmt = (sqlite3_stmt*)lean_get_external_data(stmt_obj);
     const char* sql = sqlite3_sql(stmt);
     return lean_io_result_mk_ok(lean_mk_string(sql ? sql : ""));
+}
+
+/* ========================================================================== */
+/* Backup Operations                                                           */
+/* ========================================================================== */
+
+/* Initialize a backup from source to destination database.
+ * Both databases must be open. The backup copies from srcDb to destDb.
+ * srcName and destName are typically "main" for the main database. */
+LEAN_EXPORT lean_obj_res quarry_backup_init(
+    b_lean_obj_arg dest_db_obj,
+    b_lean_obj_arg dest_name_obj,
+    b_lean_obj_arg src_db_obj,
+    b_lean_obj_arg src_name_obj,
+    lean_obj_arg world
+) {
+    init_external_classes();
+
+    sqlite3* destDb = (sqlite3*)lean_get_external_data(dest_db_obj);
+    sqlite3* srcDb = (sqlite3*)lean_get_external_data(src_db_obj);
+    const char* destName = lean_string_cstr(dest_name_obj);
+    const char* srcName = lean_string_cstr(src_name_obj);
+
+    sqlite3_backup* backup = sqlite3_backup_init(destDb, destName, srcDb, srcName);
+    if (backup == NULL) {
+        return mk_sqlite_error(destDb);
+    }
+
+    BackupWrapper* wrapper = (BackupWrapper*)malloc(sizeof(BackupWrapper));
+    if (wrapper == NULL) {
+        sqlite3_backup_finish(backup);
+        return mk_io_error("Failed to allocate backup wrapper");
+    }
+    wrapper->backup = backup;
+    wrapper->finished = 0;
+
+    lean_object* obj = lean_alloc_external(g_backup_class, wrapper);
+    return lean_io_result_mk_ok(obj);
+}
+
+/* Perform a step of the backup, copying up to nPages pages.
+ * Use -1 to copy all remaining pages in one step.
+ * Returns the SQLite result code:
+ *   SQLITE_OK (0) - more pages to copy
+ *   SQLITE_DONE (101) - backup complete
+ *   Other - error occurred */
+LEAN_EXPORT lean_obj_res quarry_backup_step(b_lean_obj_arg backup_obj, int32_t nPages, lean_obj_arg world) {
+    BackupWrapper* wrapper = (BackupWrapper*)lean_get_external_data(backup_obj);
+    if (wrapper == NULL || wrapper->backup == NULL || wrapper->finished) {
+        return mk_io_error("Backup handle is invalid or already finished");
+    }
+    int rc = sqlite3_backup_step(wrapper->backup, nPages);
+    return lean_io_result_mk_ok(lean_int_to_int(rc));
+}
+
+/* Finish and release the backup handle.
+ * Returns SQLITE_OK on success. */
+LEAN_EXPORT lean_obj_res quarry_backup_finish(b_lean_obj_arg backup_obj, lean_obj_arg world) {
+    BackupWrapper* wrapper = (BackupWrapper*)lean_get_external_data(backup_obj);
+    if (wrapper == NULL) {
+        return mk_io_error("Backup wrapper is NULL");
+    }
+    if (wrapper->finished) {
+        /* Already finished, return OK */
+        return lean_io_result_mk_ok(lean_int_to_int(0));
+    }
+    int rc = sqlite3_backup_finish(wrapper->backup);
+    wrapper->backup = NULL;
+    wrapper->finished = 1;
+    return lean_io_result_mk_ok(lean_int_to_int(rc));
+}
+
+/* Get the number of pages remaining to be backed up */
+LEAN_EXPORT lean_obj_res quarry_backup_remaining(b_lean_obj_arg backup_obj, lean_obj_arg world) {
+    BackupWrapper* wrapper = (BackupWrapper*)lean_get_external_data(backup_obj);
+    if (wrapper == NULL || wrapper->backup == NULL) {
+        return lean_io_result_mk_ok(lean_int_to_int(0));
+    }
+    int remaining = sqlite3_backup_remaining(wrapper->backup);
+    return lean_io_result_mk_ok(lean_int_to_int(remaining));
+}
+
+/* Get the total number of pages in the source database */
+LEAN_EXPORT lean_obj_res quarry_backup_page_count(b_lean_obj_arg backup_obj, lean_obj_arg world) {
+    BackupWrapper* wrapper = (BackupWrapper*)lean_get_external_data(backup_obj);
+    if (wrapper == NULL || wrapper->backup == NULL) {
+        return lean_io_result_mk_ok(lean_int_to_int(0));
+    }
+    int total = sqlite3_backup_pagecount(wrapper->backup);
+    return lean_io_result_mk_ok(lean_int_to_int(total));
 }

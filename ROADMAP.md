@@ -21,26 +21,7 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] User-defined scalar functions (callbacks from C to Lean)
 - [x] User-defined aggregate functions (custom SUM/AVG/COUNT)
 - [x] Column metadata (source database/table/column info)
-
-## High Priority
-
-Features that would benefit most users.
-
-### Backup API
-Online backup to another database file.
-
-```lean
--- Goal API
-db.backup "/path/to/backup.db"
--- Or incremental
-let backup ← db.backupInit destDb
-while !(← backup.isDone) do
-  backup.step 100
-backup.finish
-```
-
-**SQLite API**: `sqlite3_backup_init`, `sqlite3_backup_step`, `sqlite3_backup_finish`
-**Complexity**: Medium
+- [x] Backup API (`db.backupToFile`, `db.backupTo`, incremental backup with progress)
 
 ## Medium Priority
 

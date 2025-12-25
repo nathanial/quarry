@@ -37,7 +37,9 @@ import Quarry.Core.Column
 import Quarry.FFI.Types
 import Quarry.FFI.Database
 import Quarry.FFI.Statement
+import Quarry.FFI.Backup
 import Quarry.Database
+import Quarry.Backup
 import Quarry.Bind
 import Quarry.Extract
 import Quarry.Transaction

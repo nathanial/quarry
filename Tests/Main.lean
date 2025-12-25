@@ -10,6 +10,7 @@ import Tests.Row
 import Tests.ErrorHandling
 import Tests.Config
 import Tests.UserFunctions
+import Tests.Backup
 
 open Crucible
 

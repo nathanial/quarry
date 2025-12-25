@@ -15,4 +15,9 @@ opaque StatementPointed : NonemptyType
 def Statement := StatementPointed.type
 instance : Nonempty Statement := StatementPointed.property
 
+/-- Opaque handle to sqlite3_backup backup operation -/
+opaque BackupPointed : NonemptyType
+def Backup := BackupPointed.type
+instance : Nonempty Backup := BackupPointed.property
+
 end Quarry.FFI

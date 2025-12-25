@@ -135,6 +135,94 @@ def transaction (db : Database) (f : IO α) : IO α := do
 def prepare (db : Database) (sql : String) : IO FFI.Statement :=
   FFI.stmtPrepare db.handle sql
 
+/-- Set busy timeout in milliseconds.
+    When another connection holds a lock, SQLite will retry for up to this
+    many milliseconds before returning SQLITE_BUSY. Default is 0 (return immediately). -/
+def busyTimeout (db : Database) (ms : UInt32) : IO Unit :=
+  FFI.dbBusyTimeout db.handle ms
+
+/-- Journal mode for the database -/
+inductive JournalMode where
+  | delete    -- Default: delete journal after commit
+  | truncate  -- Truncate journal to zero length
+  | persist   -- Keep journal file, zero header
+  | memory    -- Store journal in memory
+  | wal       -- Write-Ahead Logging (best for concurrent reads)
+  | off       -- Disable journaling (dangerous!)
+  deriving Repr, BEq
+
+namespace JournalMode
+def toString : JournalMode -> String
+  | .delete => "DELETE"
+  | .truncate => "TRUNCATE"
+  | .persist => "PERSIST"
+  | .memory => "MEMORY"
+  | .wal => "WAL"
+  | .off => "OFF"
+
+def fromString? : String -> Option JournalMode
+  | "delete" | "DELETE" => some .delete
+  | "truncate" | "TRUNCATE" => some .truncate
+  | "persist" | "PERSIST" => some .persist
+  | "memory" | "MEMORY" => some .memory
+  | "wal" | "WAL" => some .wal
+  | "off" | "OFF" => some .off
+  | _ => none
+end JournalMode
+
+/-- Set the journal mode. Returns the new journal mode (may differ from requested
+    if the mode couldn't be set, e.g., WAL on in-memory databases). -/
+def setJournalMode (db : Database) (mode : JournalMode) : IO JournalMode := do
+  let rows ← db.query s!"PRAGMA journal_mode={mode.toString}"
+  match rows[0]? with
+  | some row =>
+    match row.get? 0 with
+    | some (Value.text s) =>
+      match JournalMode.fromString? s with
+      | some m => return m
+      | none => return mode  -- Fallback
+    | _ => return mode
+  | none => return mode
+
+/-- Get the current journal mode -/
+def getJournalMode (db : Database) : IO JournalMode := do
+  let rows ← db.query "PRAGMA journal_mode"
+  match rows[0]? with
+  | some row =>
+    match row.get? 0 with
+    | some (Value.text s) =>
+      match JournalMode.fromString? s with
+      | some m => return m
+      | none => return .delete  -- Fallback to default
+    | _ => return .delete
+  | none => return .delete
+
+/-- Enable WAL mode for better concurrent read performance.
+    Returns true if WAL was successfully enabled. -/
+def enableWAL (db : Database) : IO Bool := do
+  let mode ← db.setJournalMode .wal
+  return mode == .wal
+
+/-- Synchronous mode for the database -/
+inductive SyncMode where
+  | off     -- No syncs (fastest, but unsafe on crash)
+  | normal  -- Sync at critical moments
+  | full    -- Sync after each transaction (default, safest)
+  | extra   -- Extra syncs for extra safety
+  deriving Repr, BEq
+
+namespace SyncMode
+def toInt : SyncMode -> Int
+  | .off => 0
+  | .normal => 1
+  | .full => 2
+  | .extra => 3
+end SyncMode
+
+/-- Set the synchronous mode -/
+def setSynchronous (db : Database) (mode : SyncMode) : IO Unit :=
+  db.exec s!"PRAGMA synchronous={mode.toInt}"
+
 end Database
 
 end Quarry

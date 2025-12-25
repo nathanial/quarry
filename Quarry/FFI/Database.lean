@@ -39,4 +39,8 @@ opaque dbChanges (db : @& Database) : IO Int
 @[extern "quarry_db_total_changes"]
 opaque dbTotalChanges (db : @& Database) : IO Int
 
+-- Busy timeout (milliseconds)
+@[extern "quarry_db_busy_timeout"]
+opaque dbBusyTimeout (db : @& Database) (ms : UInt32) : IO Unit
+
 end Quarry.FFI

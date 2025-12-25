@@ -144,6 +144,15 @@ LEAN_EXPORT lean_obj_res quarry_db_total_changes(b_lean_obj_arg db_obj, lean_obj
     return lean_io_result_mk_ok(lean_int_to_int(total));
 }
 
+LEAN_EXPORT lean_obj_res quarry_db_busy_timeout(b_lean_obj_arg db_obj, uint32_t ms, lean_obj_arg world) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    int rc = sqlite3_busy_timeout(db, (int)ms);
+    if (rc != SQLITE_OK) {
+        return mk_sqlite_error(db);
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 /* ========================================================================== */
 /* Statement Operations                                                        */
 /* ========================================================================== */

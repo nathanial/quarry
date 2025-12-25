@@ -618,6 +618,48 @@ test "type extraction error" := do
 
 end Tests.ErrorHandling
 
+namespace Tests.Configuration
+
+testSuite "Configuration"
+
+test "set busy timeout" := do
+  let db ← Database.openMemory
+  db.busyTimeout 5000  -- 5 seconds
+  ensure true "busy timeout set"
+
+test "get journal mode default" := do
+  let db ← Database.openMemory
+  let mode ← db.getJournalMode
+  -- In-memory databases use "memory" journal mode
+  ensure (mode == .memory) "in-memory uses memory journal"
+
+test "set journal mode" := do
+  let db ← Database.openMemory
+  let mode ← db.setJournalMode .delete
+  -- In-memory can't change to delete, stays memory
+  ensure (mode == .memory) "in-memory stays memory mode"
+
+test "enable WAL on memory db" := do
+  let db ← Database.openMemory
+  let success ← db.enableWAL
+  -- WAL can't be enabled on in-memory databases
+  ensure (!success) "WAL not available for in-memory"
+
+test "set synchronous mode" := do
+  let db ← Database.openMemory
+  db.setSynchronous .normal
+  ensure true "synchronous mode set"
+
+test "JournalMode toString roundtrip" := do
+  ensure (Database.JournalMode.fromString? "WAL" == some .wal) "WAL parses"
+  ensure (Database.JournalMode.fromString? "DELETE" == some .delete) "DELETE parses"
+  ensure (Database.JournalMode.fromString? "wal" == some .wal) "lowercase works"
+  ensure (Database.JournalMode.fromString? "invalid" == none) "invalid returns none"
+
+#generate_tests
+
+end Tests.Configuration
+
 def main : IO UInt32 := do
   IO.println "Quarry Library Tests"
   IO.println "===================="

@@ -25,24 +25,11 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] Virtual Tables (ArrayTable for writable in-memory tables, Generator for streaming read-only tables)
 - [x] Full-Text Search (FTS5) - phrase search, prefix search, boolean operators, bm25 ranking, highlight/snippet
 - [x] R-Tree (Spatial Indexing) - 2D/3D bounding boxes, range queries, auxiliary columns
+- [x] Incremental BLOB I/O - streaming read/write of large blobs, reopen for different rows
 
 ## Medium Priority
 
 Useful for specific use cases.
-
-### Incremental BLOB I/O
-Stream large blobs without loading entirely into memory.
-
-```lean
--- Goal API
-let blob ← db.openBlob "table" "column" rowid .readWrite
-blob.read offset size
-blob.write offset data
-blob.close
-```
-
-**SQLite API**: `sqlite3_blob_open`, `sqlite3_blob_read`, `sqlite3_blob_write`, `sqlite3_blob_close`
-**Complexity**: Medium
 
 ### Update Hook
 React to INSERT/UPDATE/DELETE operations.

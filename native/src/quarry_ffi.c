@@ -16,12 +16,19 @@
 static lean_external_class* g_database_class = NULL;
 static lean_external_class* g_statement_class = NULL;
 static lean_external_class* g_backup_class = NULL;
+static lean_external_class* g_blob_class = NULL;
 
 /* Wrapper for backup to track if it's been explicitly finished */
 typedef struct {
     sqlite3_backup* backup;
     int finished;  /* 1 if finish was called explicitly */
 } BackupWrapper;
+
+/* Wrapper for blob to track if it's been explicitly closed */
+typedef struct {
+    sqlite3_blob* blob;
+    int closed;  /* 1 if close was called explicitly */
+} BlobWrapper;
 
 /* ========================================================================== */
 /* Finalizers                                                                  */
@@ -51,6 +58,16 @@ static void backup_finalizer(void* ptr) {
     }
 }
 
+static void blob_finalizer(void* ptr) {
+    BlobWrapper* wrapper = (BlobWrapper*)ptr;
+    if (wrapper) {
+        if (!wrapper->closed && wrapper->blob) {
+            sqlite3_blob_close(wrapper->blob);
+        }
+        free(wrapper);
+    }
+}
+
 static void noop_foreach(void* ptr, b_lean_obj_arg arg) {
     (void)ptr;
     (void)arg;
@@ -65,6 +82,7 @@ static void init_external_classes(void) {
         g_database_class = lean_register_external_class(database_finalizer, noop_foreach);
         g_statement_class = lean_register_external_class(statement_finalizer, noop_foreach);
         g_backup_class = lean_register_external_class(backup_finalizer, noop_foreach);
+        g_blob_class = lean_register_external_class(blob_finalizer, noop_foreach);
     }
 }
 
@@ -808,6 +826,147 @@ LEAN_EXPORT lean_obj_res quarry_backup_page_count(b_lean_obj_arg backup_obj, lea
     }
     int total = sqlite3_backup_pagecount(wrapper->backup);
     return lean_io_result_mk_ok(lean_int_to_int(total));
+}
+
+/* ========================================================================== */
+/* Incremental BLOB I/O                                                        */
+/* ========================================================================== */
+
+/* Open a blob for incremental I/O.
+ * flags: 0 = read-only, 1 = read-write */
+LEAN_EXPORT lean_obj_res quarry_blob_open(
+    b_lean_obj_arg db_obj,
+    b_lean_obj_arg db_name_obj,
+    b_lean_obj_arg table_obj,
+    b_lean_obj_arg column_obj,
+    b_lean_obj_arg rowid_obj,
+    uint8_t flags,
+    lean_obj_arg world
+) {
+    init_external_classes();
+
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    const char* db_name = lean_string_cstr(db_name_obj);
+    const char* table = lean_string_cstr(table_obj);
+    const char* column = lean_string_cstr(column_obj);
+    int64_t rowid = lean_int64_of_int(rowid_obj);
+
+    sqlite3_blob* blob = NULL;
+    int rc = sqlite3_blob_open(db, db_name, table, column, rowid, flags, &blob);
+    if (rc != SQLITE_OK) {
+        return mk_sqlite_error(db);
+    }
+
+    BlobWrapper* wrapper = (BlobWrapper*)malloc(sizeof(BlobWrapper));
+    if (wrapper == NULL) {
+        sqlite3_blob_close(blob);
+        return mk_io_error("Failed to allocate blob wrapper");
+    }
+    wrapper->blob = blob;
+    wrapper->closed = 0;
+
+    lean_object* obj = lean_alloc_external(g_blob_class, wrapper);
+    return lean_io_result_mk_ok(obj);
+}
+
+/* Read bytes from blob at offset */
+LEAN_EXPORT lean_obj_res quarry_blob_read(
+    b_lean_obj_arg blob_obj,
+    uint32_t offset,
+    uint32_t size,
+    lean_obj_arg world
+) {
+    BlobWrapper* wrapper = (BlobWrapper*)lean_get_external_data(blob_obj);
+    if (wrapper == NULL || wrapper->blob == NULL || wrapper->closed) {
+        return mk_io_error("Blob handle is invalid or closed");
+    }
+
+    /* Allocate ByteArray for result */
+    lean_object* arr = lean_alloc_sarray(1, size, size);
+    uint8_t* data = lean_sarray_cptr(arr);
+
+    int rc = sqlite3_blob_read(wrapper->blob, data, (int)size, (int)offset);
+    if (rc != SQLITE_OK) {
+        lean_dec(arr);
+        return mk_io_error("Blob read failed");
+    }
+
+    return lean_io_result_mk_ok(arr);
+}
+
+/* Write bytes to blob at offset */
+LEAN_EXPORT lean_obj_res quarry_blob_write(
+    b_lean_obj_arg blob_obj,
+    uint32_t offset,
+    b_lean_obj_arg data_obj,
+    lean_obj_arg world
+) {
+    BlobWrapper* wrapper = (BlobWrapper*)lean_get_external_data(blob_obj);
+    if (wrapper == NULL || wrapper->blob == NULL || wrapper->closed) {
+        return mk_io_error("Blob handle is invalid or closed");
+    }
+
+    size_t size = lean_sarray_size(data_obj);
+    uint8_t* data = lean_sarray_cptr(data_obj);
+
+    int rc = sqlite3_blob_write(wrapper->blob, data, (int)size, (int)offset);
+    if (rc != SQLITE_OK) {
+        return mk_io_error("Blob write failed");
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* Get total blob size in bytes */
+LEAN_EXPORT lean_obj_res quarry_blob_bytes(b_lean_obj_arg blob_obj, lean_obj_arg world) {
+    BlobWrapper* wrapper = (BlobWrapper*)lean_get_external_data(blob_obj);
+    if (wrapper == NULL || wrapper->blob == NULL || wrapper->closed) {
+        return lean_io_result_mk_ok(lean_int_to_int(0));
+    }
+
+    int size = sqlite3_blob_bytes(wrapper->blob);
+    return lean_io_result_mk_ok(lean_int_to_int(size));
+}
+
+/* Close blob handle explicitly */
+LEAN_EXPORT lean_obj_res quarry_blob_close(b_lean_obj_arg blob_obj, lean_obj_arg world) {
+    BlobWrapper* wrapper = (BlobWrapper*)lean_get_external_data(blob_obj);
+    if (wrapper == NULL) {
+        return mk_io_error("Blob wrapper is NULL");
+    }
+    if (wrapper->closed) {
+        /* Already closed, return OK (idempotent) */
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    int rc = sqlite3_blob_close(wrapper->blob);
+    wrapper->blob = NULL;
+    wrapper->closed = 1;
+
+    if (rc != SQLITE_OK) {
+        return mk_io_error("Blob close failed");
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* Reopen blob for a different row (reuses handle) */
+LEAN_EXPORT lean_obj_res quarry_blob_reopen(
+    b_lean_obj_arg blob_obj,
+    b_lean_obj_arg rowid_obj,
+    lean_obj_arg world
+) {
+    BlobWrapper* wrapper = (BlobWrapper*)lean_get_external_data(blob_obj);
+    if (wrapper == NULL || wrapper->blob == NULL || wrapper->closed) {
+        return mk_io_error("Blob handle is invalid or closed");
+    }
+
+    int64_t rowid = lean_int64_of_int(rowid_obj);
+    int rc = sqlite3_blob_reopen(wrapper->blob, rowid);
+    if (rc != SQLITE_OK) {
+        return mk_io_error("Blob reopen failed");
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
 }
 
 /* ========================================================================== */

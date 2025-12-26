@@ -20,4 +20,9 @@ opaque BackupPointed : NonemptyType
 def Backup := BackupPointed.type
 instance : Nonempty Backup := BackupPointed.property
 
+/-- Opaque handle to sqlite3_blob for incremental BLOB I/O -/
+opaque BlobPointed : NonemptyType
+def Blob := BlobPointed.type
+instance : Nonempty Blob := BlobPointed.property
+
 end Quarry.FFI

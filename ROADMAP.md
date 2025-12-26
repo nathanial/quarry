@@ -26,22 +26,11 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] Full-Text Search (FTS5) - phrase search, prefix search, boolean operators, bm25 ranking, highlight/snippet
 - [x] R-Tree (Spatial Indexing) - 2D/3D bounding boxes, range queries, auxiliary columns
 - [x] Incremental BLOB I/O - streaming read/write of large blobs, reopen for different rows
+- [x] Update Hook - react to INSERT/UPDATE/DELETE with callbacks
 
 ## Medium Priority
 
 Useful for specific use cases.
-
-### Update Hook
-React to INSERT/UPDATE/DELETE operations.
-
-```lean
--- Goal API
-db.setUpdateHook fun op table rowid => do
-  IO.println s!"{op} on {table} row {rowid}"
-```
-
-**SQLite API**: `sqlite3_update_hook`
-**Complexity**: Medium - callback handling
 
 ### Commit/Rollback Hooks
 React to transaction events.

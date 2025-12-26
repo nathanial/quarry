@@ -78,4 +78,17 @@ opaque dbCreateAggregateFunction (db : @& Database) (name : @& String)
 opaque dbRemoveFunction (db : @& Database) (name : @& String)
     (nArgs : Int32) : IO Unit
 
+-- Update Hook
+
+/-- Set update hook callback.
+    The callback receives (opCode, tableName, rowid) where opCode is:
+    0 = INSERT, 1 = UPDATE, 2 = DELETE -/
+@[extern "quarry_db_set_update_hook"]
+opaque dbSetUpdateHook (db : @& Database)
+    (callback : UInt8 → String → Int → IO Unit) : IO Unit
+
+/-- Clear update hook -/
+@[extern "quarry_db_clear_update_hook"]
+opaque dbClearUpdateHook (db : @& Database) : IO Unit
+
 end Quarry.FFI

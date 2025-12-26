@@ -516,6 +516,95 @@ LEAN_EXPORT lean_obj_res quarry_db_remove_function(
 }
 
 /* ========================================================================== */
+/* Update Hook                                                                 */
+/* ========================================================================== */
+
+/* Context for update hook callback */
+typedef struct {
+    lean_object* callback;  /* UInt8 -> String -> Int -> IO Unit */
+} UpdateHookContext;
+
+/* Destructor for update hook context */
+static void update_hook_destroy(void* ptr) {
+    UpdateHookContext* ctx = (UpdateHookContext*)ptr;
+    if (ctx) {
+        if (ctx->callback) lean_dec(ctx->callback);
+        free(ctx);
+    }
+}
+
+/* C callback invoked by SQLite on INSERT/UPDATE/DELETE */
+static void update_hook_callback(
+    void* pArg,
+    int op,
+    const char* zDb,
+    const char* zTable,
+    sqlite3_int64 rowid
+) {
+    UpdateHookContext* ctx = (UpdateHookContext*)pArg;
+    if (!ctx || !ctx->callback) return;
+
+    /* Map SQLite operation codes to our enum: insert=0, update=1, delete=2 */
+    uint8_t opTag;
+    switch (op) {
+        case SQLITE_INSERT: opTag = 0; break;
+        case SQLITE_UPDATE: opTag = 1; break;
+        case SQLITE_DELETE: opTag = 2; break;
+        default: return;
+    }
+
+    /* Call: UInt8 -> String -> Int -> IO Unit */
+    lean_inc(ctx->callback);
+    lean_object* io_action = lean_apply_3(
+        ctx->callback,
+        lean_box(opTag),
+        lean_mk_string(zTable),
+        lean_int64_to_int(rowid)
+    );
+    lean_object* io_result = lean_apply_1(io_action, lean_io_mk_world());
+    lean_dec(io_result);
+}
+
+/* Set update hook - returns Unit */
+LEAN_EXPORT lean_obj_res quarry_db_set_update_hook(
+    b_lean_obj_arg db_obj,
+    lean_obj_arg callback,
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+
+    UpdateHookContext* ctx = (UpdateHookContext*)malloc(sizeof(UpdateHookContext));
+    ctx->callback = callback;
+
+    /* Register hook - returns old user data pointer */
+    void* old_ctx = sqlite3_update_hook(db, update_hook_callback, ctx);
+
+    /* Free old context if there was one */
+    if (old_ctx) {
+        update_hook_destroy(old_ctx);
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* Clear update hook */
+LEAN_EXPORT lean_obj_res quarry_db_clear_update_hook(
+    b_lean_obj_arg db_obj,
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+
+    /* Pass NULL to clear hook - returns old user data */
+    void* old_ctx = sqlite3_update_hook(db, NULL, NULL);
+
+    if (old_ctx) {
+        update_hook_destroy(old_ctx);
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* ========================================================================== */
 /* Statement Operations                                                        */
 /* ========================================================================== */
 

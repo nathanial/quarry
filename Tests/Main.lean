@@ -14,6 +14,7 @@ import Tests.Backup
 import Tests.VirtualTable
 import Tests.Extensions
 import Tests.Blob
+import Tests.Hook
 
 open Crucible
 

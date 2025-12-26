@@ -12,6 +12,7 @@ import Tests.Config
 import Tests.UserFunctions
 import Tests.Backup
 import Tests.VirtualTable
+import Tests.Extensions
 
 open Crucible
 

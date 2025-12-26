@@ -29,6 +29,8 @@ target sqlite3_o pkg : FilePath := do
     "-DSQLITE_OMIT_LOAD_EXTENSION",
     "-DSQLITE_DEFAULT_MEMSTATUS=0",
     "-DSQLITE_ENABLE_COLUMN_METADATA",  -- Required for column origin info
+    "-DSQLITE_ENABLE_FTS5",             -- Full-text search
+    "-DSQLITE_ENABLE_RTREE",            -- R-Tree spatial indexing
     "-fPIC",
     "-O2"
   ] #[] "cc" getLeanTrace

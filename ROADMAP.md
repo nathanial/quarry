@@ -23,6 +23,8 @@ SQLite features not yet implemented in Quarry, organized by priority.
 - [x] Column metadata (source database/table/column info)
 - [x] Backup API (`db.backupToFile`, `db.backupTo`, incremental backup with progress)
 - [x] Virtual Tables (ArrayTable for writable in-memory tables, Generator for streaming read-only tables)
+- [x] Full-Text Search (FTS5) - phrase search, prefix search, boolean operators, bm25 ranking, highlight/snippet
+- [x] R-Tree (Spatial Indexing) - 2D/3D bounding boxes, range queries, auxiliary columns
 
 ## Medium Priority
 
@@ -101,18 +103,6 @@ Custom string sorting rules.
 
 **SQLite API**: `sqlite3_create_collation_v2`
 **Complexity**: Medium
-
-### Full-Text Search (FTS5)
-Full-text search capabilities.
-
-**Note**: FTS5 is a compile-time extension. Would need to enable in SQLite build.
-**Complexity**: Low (if enabled) - just SQL syntax
-
-### R-Tree
-Spatial/geographic indexing.
-
-**Note**: R-Tree is a compile-time extension.
-**Complexity**: Low (if enabled) - just SQL syntax
 
 ## PRAGMA Helpers
 

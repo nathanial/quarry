@@ -4,13 +4,11 @@
 -/
 import Crucible
 import Quarry
+import Staple
 
 open Crucible
 open Quarry
-
-/-- Check if needle is a substring of haystack -/
-def containsSubstr (haystack needle : String) : Bool :=
-  (haystack.splitOn needle).length > 1
+open Staple (String.containsSubstr)
 
 namespace Tests.FTS5
 
@@ -100,7 +98,7 @@ test "ranking with bm25" := do
   match rows[0]? with
   | some row =>
     match row.get? 0 with
-    | some (.text content) => ensure (containsSubstr content "apple apple apple") "most relevant first"
+    | some (.text content) => ensure (String.containsSubstr content "apple apple apple") "most relevant first"
     | _ => throw (IO.userError "unexpected value")
   | none => throw (IO.userError "no row")
 
@@ -115,7 +113,7 @@ test "highlight function" := do
   | some row =>
     match row.get? 0 with
     | some (.text highlighted) =>
-      ensure (containsSubstr highlighted "<b>quick</b>") "should contain highlighted term"
+      ensure (String.containsSubstr highlighted "<b>quick</b>") "should contain highlighted term"
     | _ => throw (IO.userError "unexpected value")
   | none => throw (IO.userError "no row")
 
@@ -130,7 +128,7 @@ test "snippet function" := do
   | some row =>
     match row.get? 0 with
     | some (.text snippet) =>
-      ensure (containsSubstr snippet "[programming]") "should contain marked term"
+      ensure (String.containsSubstr snippet "[programming]") "should contain marked term"
     | _ => throw (IO.userError "unexpected value")
   | none => throw (IO.userError "no row")
 

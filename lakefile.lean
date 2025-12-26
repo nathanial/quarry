@@ -6,6 +6,7 @@ package quarry where
   precompileModules := true
 
 require crucible from ".." / "crucible"
+require staple from ".." / "staple"
 
 @[default_target]
 lean_lib Quarry where

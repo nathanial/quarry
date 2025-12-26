@@ -50,3 +50,4 @@ import Quarry.VirtualTable
 import Quarry.VirtualTable.Array
 import Quarry.VirtualTable.Generator
 import Quarry.Hook
+import Quarry.Serialize

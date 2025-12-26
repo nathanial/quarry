@@ -15,6 +15,7 @@ import Tests.VirtualTable
 import Tests.Extensions
 import Tests.Blob
 import Tests.Hook
+import Tests.Serialize
 
 open Crucible
 

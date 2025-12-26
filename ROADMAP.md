@@ -1,32 +1,44 @@
 # Quarry Roadmap
 
-SQLite features not yet implemented in Quarry, organized by priority.
+SQLite features to consider implementing, organized by priority.
 
 ## Implemented
 
-- [x] Database open/close (file and memory)
-- [x] Execute SQL statements
-- [x] Query with results (Array and single row)
-- [x] Parameter binding (positional and named)
-- [x] Type-safe binding (`ToSql` typeclass)
-- [x] Type-safe extraction (`FromSql` typeclass)
-- [x] Transactions with automatic rollback
-- [x] Savepoints (nested transactions)
-- [x] Transaction variants (deferred, immediate, exclusive)
-- [x] Last insert rowid / changes count
-- [x] Busy timeout
-- [x] WAL mode helper
-- [x] Interrupt (cancel long-running queries)
-- [x] Synchronous mode helper
-- [x] User-defined scalar functions (callbacks from C to Lean)
-- [x] User-defined aggregate functions (custom SUM/AVG/COUNT)
-- [x] Column metadata (source database/table/column info)
-- [x] Backup API (`db.backupToFile`, `db.backupTo`, incremental backup with progress)
-- [x] Virtual Tables (ArrayTable for writable in-memory tables, Generator for streaming read-only tables)
-- [x] Full-Text Search (FTS5) - phrase search, prefix search, boolean operators, bm25 ranking, highlight/snippet
-- [x] R-Tree (Spatial Indexing) - 2D/3D bounding boxes, range queries, auxiliary columns
-- [x] Incremental BLOB I/O - streaming read/write of large blobs, reopen for different rows
-- [x] Update Hook - react to INSERT/UPDATE/DELETE with callbacks
+Core database operations, transactions, parameter binding, type-safe extraction, user-defined functions (scalar & aggregate), backup API, virtual tables, FTS5, R-Tree, incremental BLOB I/O, update hooks, serialize/deserialize, and comprehensive PRAGMA helpers.
+
+See `Quarry.lean` for the full API surface.
+
+---
+
+## High Priority
+
+Powerful features with broad applicability.
+
+### Trace/Profile
+Log every SQL statement with execution timing.
+
+```lean
+-- Goal API
+db.setTrace fun sql => IO.println s!"SQL: {sql}"
+db.setProfile fun sql nanos => IO.println s!"{sql} took {nanos}ns"
+```
+
+**Use cases**: Debugging, performance analysis, query logging
+**SQLite API**: `sqlite3_trace_v2`
+
+### Preupdate Hook
+Like update hook but with access to old/new column values.
+
+```lean
+-- Goal API
+db.setPreupdateHook fun op table oldRow newRow => do
+  IO.println s!"Changed {table}: {oldRow} → {newRow}"
+```
+
+**Use cases**: Audit logging, detailed change tracking, undo/redo
+**SQLite API**: `sqlite3_preupdate_hook`, `sqlite3_preupdate_old`, `sqlite3_preupdate_new`
+
+---
 
 ## Medium Priority
 
@@ -42,7 +54,6 @@ db.setRollbackHook do IO.println "rolling back"
 ```
 
 **SQLite API**: `sqlite3_commit_hook`, `sqlite3_rollback_hook`
-**Complexity**: Medium
 
 ### Progress Handler
 Callback during long operations (for progress bars, cancellation).
@@ -55,7 +66,43 @@ db.setProgressHandler 1000 do
 ```
 
 **SQLite API**: `sqlite3_progress_handler`
-**Complexity**: Medium
+
+### Database Status
+Memory usage, cache statistics, schema size.
+
+```lean
+-- Goal API
+let (current, peak) ← db.status .cacheUsed
+let schemaSize ← db.status .schemaUsed
+```
+
+**Use cases**: Monitoring, diagnostics, memory profiling
+**SQLite API**: `sqlite3_db_status`
+
+### Statement Status
+Query performance metrics (rows scanned, sorts, index hits).
+
+```lean
+-- Goal API
+let rowsScanned ← stmt.status .fullscanStep
+let sortOps ← stmt.status .sort
+```
+
+**Use cases**: Query optimization, identifying slow queries
+**SQLite API**: `sqlite3_stmt_status`
+
+### Expanded SQL
+Get SQL with bound parameters substituted.
+
+```lean
+-- Goal API
+let stmt ← db.prepare "SELECT * FROM users WHERE id = ?"
+stmt.bind 1 42
+let sql ← stmt.expandedSql  -- "SELECT * FROM users WHERE id = 42"
+```
+
+**Use cases**: Logging, debugging
+**SQLite API**: `sqlite3_expanded_sql`
 
 ### Authorizer
 Fine-grained access control for SQL operations.
@@ -68,40 +115,71 @@ db.setAuthorizer fun action arg1 arg2 dbName trigger =>
 ```
 
 **SQLite API**: `sqlite3_set_authorizer`
-**Complexity**: Medium-High
+
+---
 
 ## Low Priority / Advanced
 
 Niche features for specialized use cases.
 
+### Session Extension
+Track changes and generate changesets for sync.
+
+```lean
+-- Goal API
+let session ← db.createSession "main"
+session.attachTable "users"
+-- ... make changes ...
+let changeset ← session.changeset
+db2.applyChangeset changeset
+```
+
+**Use cases**: Offline sync, change replication, undo/redo systems
+**SQLite API**: Session extension (`sqlite3session_*`)
+
+### WAL Checkpoint
+Manual checkpoint control for WAL mode databases.
+
+```lean
+-- Goal API
+let (log, checkpointed) ← db.walCheckpoint .truncate
+```
+
+**SQLite API**: `sqlite3_wal_checkpoint_v2`
+
 ### Custom Collations
 Custom string sorting rules.
 
+```lean
+-- Goal API
+db.createCollation "nocase_french" fun a b => ...
+```
+
 **SQLite API**: `sqlite3_create_collation_v2`
-**Complexity**: Medium
 
-## PRAGMA Helpers
+### Window Functions
+Create custom window functions (OVER clauses).
 
-All PRAGMA helpers have been implemented with get/set pairs:
+**SQLite API**: `sqlite3_create_window_function`
 
-- [x] `db.setForeignKeys`/`db.getForeignKeys` - Enable/disable foreign key enforcement
-- [x] `db.setSynchronous`/`db.getSynchronous` - Sync mode (.off/.normal/.full/.extra)
-- [x] `db.setCacheSize`/`db.getCacheSize` - Page cache size
-- [x] `db.setTempStore`/`db.getTempStore` - Temp storage (.default/.file/.memory)
-- [x] `db.setAutoVacuum`/`db.getAutoVacuum` - Auto vacuum mode (.none/.full/.incremental)
-- [x] `db.getEncoding` - Get database encoding (read-only after first table)
-- [x] `db.setPageSize`/`db.getPageSize` - Page size (set before first table)
-- [x] `db.setMaxPageCount`/`db.getMaxPageCount` - Limit database size
-- [x] `db.getPageCount` - Current number of pages
-- [x] `db.getFreelistCount` - Number of free pages
-- [x] `db.incrementalVacuum` - Reclaim free pages (for incremental auto-vacuum)
+### Limits
+Set maximum columns, query length, etc. for security hardening.
+
+**SQLite API**: `sqlite3_limit`
+
+### Snapshots
+Point-in-time snapshots for WAL mode databases.
+
+**SQLite API**: `sqlite3_snapshot_*`
+
+---
 
 ## Contributing
 
 To implement a feature:
 
-1. Add the C FFI function to `native/src/quarry_ffi.c`
-2. Add the Lean FFI binding to `Quarry/FFI/Database.lean` or `Quarry/FFI/Statement.lean`
-3. Add the high-level API to the appropriate module
-4. Add tests to `Tests/Main.lean`
-5. Update this roadmap to mark as complete
+1. Add C FFI functions to `native/src/quarry_ffi.c`
+2. Add Lean FFI bindings to `Quarry/FFI/*.lean`
+3. Add high-level API to the appropriate module
+4. Add tests
+5. Update this roadmap

@@ -605,6 +605,82 @@ LEAN_EXPORT lean_obj_res quarry_db_clear_update_hook(
 }
 
 /* ========================================================================== */
+/* Serialize/Deserialize                                                       */
+/* ========================================================================== */
+
+/* Serialize database to ByteArray */
+LEAN_EXPORT lean_obj_res quarry_db_serialize(
+    b_lean_obj_arg db_obj,
+    b_lean_obj_arg schema_obj,
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    const char* schema = lean_string_cstr(schema_obj);
+    sqlite3_int64 size = 0;
+
+    unsigned char* data = sqlite3_serialize(db, schema, &size, 0);
+    if (data == NULL && size == 0) {
+        /* Empty database - return empty ByteArray */
+        lean_object* arr = lean_alloc_sarray(1, 0, 0);
+        return lean_io_result_mk_ok(arr);
+    }
+    if (data == NULL) {
+        return lean_io_result_mk_error(
+            lean_mk_io_user_error(lean_mk_string("Failed to serialize database"))
+        );
+    }
+
+    /* Copy to Lean ByteArray */
+    lean_object* arr = lean_alloc_sarray(1, (size_t)size, (size_t)size);
+    memcpy(lean_sarray_cptr(arr), data, (size_t)size);
+    sqlite3_free(data);
+
+    return lean_io_result_mk_ok(arr);
+}
+
+/* Deserialize ByteArray into database connection */
+LEAN_EXPORT lean_obj_res quarry_db_deserialize(
+    b_lean_obj_arg db_obj,
+    b_lean_obj_arg schema_obj,
+    b_lean_obj_arg data_obj,
+    uint8_t readOnly,
+    lean_obj_arg world
+) {
+    sqlite3* db = (sqlite3*)lean_get_external_data(db_obj);
+    const char* schema = lean_string_cstr(schema_obj);
+    size_t size = lean_sarray_size(data_obj);
+
+    /* Allocate buffer with sqlite3_malloc64 so SQLite can take ownership */
+    unsigned char* buf = (unsigned char*)sqlite3_malloc64(size);
+    if (buf == NULL && size > 0) {
+        return lean_io_result_mk_error(
+            lean_mk_io_user_error(lean_mk_string("Failed to allocate memory for deserialize"))
+        );
+    }
+
+    /* Copy data from Lean ByteArray */
+    if (size > 0) {
+        memcpy(buf, lean_sarray_cptr(data_obj), size);
+    }
+
+    /* Set flags - always FREEONCLOSE so SQLite manages memory */
+    unsigned flags = SQLITE_DESERIALIZE_FREEONCLOSE;
+    if (!readOnly) {
+        flags |= SQLITE_DESERIALIZE_RESIZEABLE;
+    } else {
+        flags |= SQLITE_DESERIALIZE_READONLY;
+    }
+
+    int rc = sqlite3_deserialize(db, schema, buf, size, size, flags);
+    if (rc != SQLITE_OK) {
+        /* Note: SQLite already freed buf on failure when FREEONCLOSE is set */
+        return mk_sqlite_error(db);
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* ========================================================================== */
 /* Statement Operations                                                        */
 /* ========================================================================== */
 

@@ -91,4 +91,15 @@ opaque dbSetUpdateHook (db : @& Database)
 @[extern "quarry_db_clear_update_hook"]
 opaque dbClearUpdateHook (db : @& Database) : IO Unit
 
+-- Serialize/Deserialize
+
+/-- Serialize database to ByteArray -/
+@[extern "quarry_db_serialize"]
+opaque dbSerialize (db : @& Database) (schema : @& String) : IO ByteArray
+
+/-- Deserialize ByteArray into database, replacing current content -/
+@[extern "quarry_db_deserialize"]
+opaque dbDeserialize (db : @& Database) (schema : @& String)
+    (data : @& ByteArray) (readOnly : UInt8) : IO Unit
+
 end Quarry.FFI

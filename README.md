@@ -16,7 +16,7 @@ SQLite library for Lean 4 using the amalgamated source (no system dependencies).
 Add to your `lakefile.lean`:
 
 ```lean
-require quarry from ".." / "quarry"
+require quarry from git "https://github.com/nathanial/quarry" @ "v0.0.1"
 ```
 
 ## Quick Start

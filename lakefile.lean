@@ -7,6 +7,7 @@ package quarry where
 
 require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.1"
 require staple from git "https://github.com/nathanial/staple" @ "v0.0.1"
+require chisel from ".." / "chisel"
 
 @[default_target]
 lean_lib Quarry where

@@ -51,3 +51,5 @@ import Quarry.VirtualTable.Array
 import Quarry.VirtualTable.Generator
 import Quarry.Hook
 import Quarry.Serialize
+import Quarry.Chisel.Convert
+import Quarry.Chisel.Execute

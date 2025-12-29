@@ -16,6 +16,7 @@ import Tests.Extensions
 import Tests.Blob
 import Tests.Hook
 import Tests.Serialize
+import Tests.Chisel
 
 open Crucible
 

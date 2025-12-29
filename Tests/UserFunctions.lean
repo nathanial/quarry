@@ -19,8 +19,8 @@ test "scalar function double" := do
     match args[0]? with
     | some (Value.integer n) => return Value.integer (n * 2)
     | _ => return Value.null
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (21)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (21)"
   let rows ← db.query "SELECT double(x) FROM t"
   match rows[0]?.bind (·.get? 0) with
   | some (Value.integer 42) => ensure true "doubled"
@@ -90,8 +90,8 @@ test "scalar function with float" := do
 
 test "aggregate product" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE nums (v INTEGER)"
-  db.exec "INSERT INTO nums VALUES (2), (3), (4)"
+  db.execSqlDdl "CREATE TABLE nums (v INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO nums VALUES (2), (3), (4)"
 
   db.createAggregateFunction "product" 1
     (init := pure (Value.integer 1))
@@ -108,8 +108,8 @@ test "aggregate product" := do
 
 test "aggregate string concat" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE words (w TEXT)"
-  db.exec "INSERT INTO words VALUES ('a'), ('b'), ('c')"
+  db.execSqlDdl "CREATE TABLE words (w TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO words VALUES ('a'), ('b'), ('c')"
 
   db.createAggregateFunction "concat_all" 1
     (init := pure (Value.text ""))
@@ -126,8 +126,8 @@ test "aggregate string concat" := do
 
 test "aggregate with GROUP BY" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE sales (category TEXT, amount INTEGER)"
-  db.exec "INSERT INTO sales VALUES ('A', 10), ('A', 20), ('B', 5)"
+  db.execSqlDdl "CREATE TABLE sales (category TEXT, amount INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO sales VALUES ('A', 10), ('A', 20), ('B', 5)"
 
   db.createAggregateFunction "my_sum" 1
     (init := pure (Value.integer 0))
@@ -144,7 +144,7 @@ test "aggregate with GROUP BY" := do
 
 test "aggregate empty table" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE empty (v INTEGER)"
+  db.execSqlDdl "CREATE TABLE empty (v INTEGER)"
 
   db.createAggregateFunction "my_count" 1
     (init := pure (Value.integer 0))
@@ -193,8 +193,8 @@ test "Bool argument and result" := do
 test "ByteArray argument and result" := do
   let db ← Database.openMemory
   db.createFunction1 "blob_len" (fun (b : ByteArray) => (b.size : Int))
-  db.exec "CREATE TABLE blobs (data BLOB)"
-  db.exec "INSERT INTO blobs VALUES (X'DEADBEEF')"
+  db.execSqlDdl "CREATE TABLE blobs (data BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO blobs VALUES (X'DEADBEEF')"
   let rows ← db.query "SELECT blob_len(data) FROM blobs"
   match rows[0]?.bind (·.get? 0) with
   | some (Value.integer 4) => ensure true "blob length correct"
@@ -218,8 +218,8 @@ test "raw Value passthrough" := do
 
 test "multi-argument aggregate" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE pairs (a INTEGER, b INTEGER)"
-  db.exec "INSERT INTO pairs VALUES (1, 2), (3, 4), (5, 6)"
+  db.execSqlDdl "CREATE TABLE pairs (a INTEGER, b INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO pairs VALUES (1, 2), (3, 4), (5, 6)"
 
   -- Aggregate that sums products: (1*2) + (3*4) + (5*6) = 2 + 12 + 30 = 44
   db.createAggregateFunction "sum_products" 2

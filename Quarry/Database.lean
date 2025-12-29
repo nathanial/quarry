@@ -32,8 +32,9 @@ def openMemory : IO Database := do
 def close (db : Database) : IO Unit :=
   FFI.dbClose db.handle
 
-/-- Execute SQL that doesn't return results (CREATE, INSERT, UPDATE, DELETE) -/
-def exec (db : Database) (sql : String) : IO Unit :=
+/-- Execute raw SQL that doesn't return results (CREATE, INSERT, UPDATE, DELETE).
+    Prefer execSql from Quarry.Chisel.Execute for parsed SQL execution. -/
+def execRaw (db : Database) (sql : String) : IO Unit :=
   FFI.dbExec db.handle sql
 
 /-- Get the last inserted rowid -/
@@ -122,13 +123,13 @@ def queryForEach (db : Database) (sql : String) (f : Row -> IO Unit) : IO Unit :
 
 /-- Run operations inside a transaction -/
 def transaction (db : Database) (f : IO α) : IO α := do
-  db.exec "BEGIN TRANSACTION"
+  db.execRaw "BEGIN TRANSACTION"
   try
     let result ← f
-    db.exec "COMMIT"
+    db.execRaw "COMMIT"
     return result
   catch e =>
-    db.exec "ROLLBACK"
+    db.execRaw "ROLLBACK"
     throw e
 
 /-- Prepare a statement for repeated execution -/
@@ -233,7 +234,7 @@ end SyncMode
 
 /-- Set the synchronous mode -/
 def setSynchronous (db : Database) (mode : SyncMode) : IO Unit :=
-  db.exec s!"PRAGMA synchronous={mode.toInt}"
+  db.execRaw s!"PRAGMA synchronous={mode.toInt}"
 
 /-- Get the synchronous mode -/
 def getSynchronous (db : Database) : IO SyncMode := do
@@ -252,7 +253,7 @@ def getSynchronous (db : Database) : IO SyncMode := do
 /-- Enable or disable foreign key enforcement.
     Note: This must be set before any tables are accessed in a session. -/
 def setForeignKeys (db : Database) (enabled : Bool) : IO Unit :=
-  db.exec s!"PRAGMA foreign_keys = {if enabled then 1 else 0}"
+  db.execRaw s!"PRAGMA foreign_keys = {if enabled then 1 else 0}"
 
 /-- Check if foreign key enforcement is enabled -/
 def getForeignKeys (db : Database) : IO Bool := do
@@ -264,7 +265,7 @@ def getForeignKeys (db : Database) : IO Bool := do
 /-- Set the page cache size (in pages, or negative for KiB).
     Default is -2000 (2MB). -/
 def setCacheSize (db : Database) (size : Int) : IO Unit :=
-  db.exec s!"PRAGMA cache_size = {size}"
+  db.execRaw s!"PRAGMA cache_size = {size}"
 
 /-- Get the current page cache size -/
 def getCacheSize (db : Database) : IO Int := do
@@ -295,7 +296,7 @@ end TempStore
 
 /-- Set where temporary tables and indices are stored -/
 def setTempStore (db : Database) (mode : TempStore) : IO Unit :=
-  db.exec s!"PRAGMA temp_store = {mode.toInt}"
+  db.execRaw s!"PRAGMA temp_store = {mode.toInt}"
 
 /-- Get the current temporary storage mode -/
 def getTempStore (db : Database) : IO TempStore := do
@@ -327,7 +328,7 @@ end AutoVacuum
 /-- Set the auto-vacuum mode.
     Note: Can only be changed when the database is empty (before first table). -/
 def setAutoVacuum (db : Database) (mode : AutoVacuum) : IO Unit :=
-  db.exec s!"PRAGMA auto_vacuum = {mode.toInt}"
+  db.execRaw s!"PRAGMA auto_vacuum = {mode.toInt}"
 
 /-- Get the current auto-vacuum mode -/
 def getAutoVacuum (db : Database) : IO AutoVacuum := do
@@ -340,7 +341,7 @@ def getAutoVacuum (db : Database) : IO AutoVacuum := do
     Only works if auto_vacuum is set to incremental.
     Pass 0 to vacuum all freelist pages, or n to vacuum at most n pages. -/
 def incrementalVacuum (db : Database) (pages : Nat := 0) : IO Unit :=
-  db.exec s!"PRAGMA incremental_vacuum({pages})"
+  db.execRaw s!"PRAGMA incremental_vacuum({pages})"
 
 /-- Get the database text encoding (UTF-8, UTF-16le, or UTF-16be).
     This is read-only after the first table is created. -/
@@ -353,7 +354,7 @@ def getEncoding (db : Database) : IO String := do
 /-- Set the database page size (must be power of 2, 512 to 65536).
     Can only be set before any tables are created, or via VACUUM. -/
 def setPageSize (db : Database) (size : Nat) : IO Unit :=
-  db.exec s!"PRAGMA page_size = {size}"
+  db.execRaw s!"PRAGMA page_size = {size}"
 
 /-- Get the current page size in bytes -/
 def getPageSize (db : Database) : IO Nat := do
@@ -365,7 +366,7 @@ def getPageSize (db : Database) : IO Nat := do
 /-- Set the maximum number of pages in the database file.
     Use 0 for no limit. -/
 def setMaxPageCount (db : Database) (count : Nat) : IO Unit :=
-  db.exec s!"PRAGMA max_page_count = {count}"
+  db.execRaw s!"PRAGMA max_page_count = {count}"
 
 /-- Get the maximum page count (0 means no limit) -/
 def getMaxPageCount (db : Database) : IO Nat := do

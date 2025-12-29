@@ -2,6 +2,7 @@
   Quarry - SQLite Library for Lean 4
 
   A SQLite library using the amalgamated source with no system dependencies.
+  SQL statements are parsed via Chisel for type-safe execution.
 
   ## Quick Start
 
@@ -12,21 +13,21 @@
     -- Open in-memory database
     let db ← Quarry.Database.openMemory
 
-    -- Create a table
-    db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)"
+    -- Create a table (parsed and executed via Chisel)
+    db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)"
 
     -- Insert data
-    db.exec "INSERT INTO users (name, age) VALUES ('Alice', 30)"
-    db.exec "INSERT INTO users (name, age) VALUES ('Bob', 25)"
+    let _ ← db.execSqlInsert "INSERT INTO users (name, age) VALUES ('Alice', 30)"
+    let _ ← db.execSqlInsert "INSERT INTO users (name, age) VALUES ('Bob', 25)"
 
     -- Query data
-    let rows ← db.query "SELECT * FROM users"
+    let rows ← db.execSqlSelect "SELECT * FROM users"
     for row in rows do
       IO.println row
 
     -- Use transactions
     db.transaction do
-      db.exec "UPDATE users SET age = age + 1"
+      let _ ← db.execSqlModify "UPDATE users SET age = age + 1"
   ```
 -/
 

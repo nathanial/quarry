@@ -1,13 +1,17 @@
 /-
   Tests for Chisel-Quarry Integration
+
+  These tests use the unified execSql API which parses SQL via Statement.parse
+  and executes the appropriate statement type.
 -/
 import Quarry
 import Chisel
 import Crucible
+import Staple
 
 open Crucible
 open Quarry
-open Chisel
+open Staple (String.containsSubstr)
 
 namespace Tests.Chisel
 
@@ -88,96 +92,109 @@ test "Value.text roundtrip" := do
 end Tests.Chisel
 
 -- ============================================================================
--- SELECT Execution Tests
+-- Unified SQL Execution Tests (SELECT)
 -- ============================================================================
 
 namespace Tests.ChiselSelect
 
 testSuite "Chisel SELECT Execution"
 
-test "execSelect simple query" := do
+test "execSqlSelect simple query" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
-  db.exec "INSERT INTO users (name) VALUES ('Alice'), ('Bob')"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO users (name) VALUES ('Alice'), ('Bob')"
 
-  let stmt : Chisel.SelectCore := SelectCore.mk
-    false
-    [⟨Expr.col "name", none⟩]
-    (some (TableRef.table "users" none))
-    none [] none [] none none
-  let rows ← db.execSelect stmt
+  let rows ← db.execSqlSelect "SELECT name FROM users"
   rows.size ≡ 2
 
-test "select with monadic builder" := do
+test "execSqlSelect with WHERE" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (id INTEGER PRIMARY KEY, value INTEGER)"
-  db.exec "INSERT INTO items (value) VALUES (10), (20), (30)"
+  db.execSqlDdl "CREATE TABLE items (id INTEGER PRIMARY KEY, value INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO items (value) VALUES (10), (20), (30)"
 
-  let rows ← db.select do
-    select_ (Expr.col "value")
-    from_ "items"
-    where_ (Expr.col "value" .> Expr.lit (Literal.int 15))
-
+  let rows ← db.execSqlSelect "SELECT value FROM items WHERE value > 15"
   rows.size ≡ 2
 
-test "selectOne returns first row" := do
+test "execSqlSelect returns first row" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (1), (2), (3)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1), (2), (3)"
 
-  let row ← db.selectOne do
-    select_ Expr.star
-    from_ "t"
-    orderBy_ [OrderItem.mk (Expr.col "x") SortDir.asc none]
-    limit_ 1
-
-  match row with
+  let rows ← db.execSqlSelect "SELECT * FROM t ORDER BY x ASC LIMIT 1"
+  match rows[0]? with
   | some r =>
     match r.get? 0 with
     | some (.integer 1) => ensure true "first row is 1"
     | _ => throw (IO.userError "expected integer 1")
   | none => throw (IO.userError "expected a row")
 
-test "selectOne returns none for empty" := do
+test "execSqlSelect returns empty for no matches" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
 
-  let row ← db.selectOne do
-    select_ Expr.star
-    from_ "t"
+  let rows ← db.execSqlSelect "SELECT * FROM t"
+  rows.size ≡ 0
 
-  match row with
-  | none => ensure true "no rows"
-  | some _ => throw (IO.userError "expected none")
-
-test "select with JOIN" := do
+test "execSqlSelect with JOIN" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
-  db.exec "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount INTEGER)"
-  db.exec "INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')"
-  db.exec "INSERT INTO orders VALUES (1, 1, 100), (2, 1, 200), (3, 2, 150)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  db.execSqlDdl "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')"
+  let _ ← db.execSqlInsert "INSERT INTO orders VALUES (1, 1, 100), (2, 1, 200), (3, 2, 150)"
 
-  let rows ← db.select do
-    select_ (Expr.qualified "users" "name")
-    select_ (Expr.qualified "orders" "amount")
-    Quarry.Database.from_' (TableRef.join JoinType.inner
-      (TableRef.table "users" none)
-      (TableRef.table "orders" none)
-      (some (Expr.qualified "users" "id" .== Expr.qualified "orders" "user_id")))
-
+  let rows ← db.execSqlSelect
+    "SELECT users.name, orders.amount FROM users INNER JOIN orders ON users.id = orders.user_id"
   rows.size ≡ 3
 
-test "select with GROUP BY and aggregate" := do
+test "execSqlSelect with GROUP BY and aggregate" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE sales (category TEXT, amount INTEGER)"
-  db.exec "INSERT INTO sales VALUES ('A', 10), ('A', 20), ('B', 30)"
+  db.execSqlDdl "CREATE TABLE sales (category TEXT, amount INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO sales VALUES ('A', 10), ('A', 20), ('B', 30)"
 
-  let rows ← db.select do
-    select_ (Expr.col "category")
-    select_ (Expr.agg AggFunc.sum (some (Expr.col "amount")) false)
-    from_ "sales"
-    groupBy_ [Expr.col "category"]
+  let rows ← db.execSqlSelect "SELECT category, SUM(amount) FROM sales GROUP BY category"
+  rows.size ≡ 2
 
+test "execSqlSelect with DISTINCT" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE tags (name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO tags VALUES ('foo'), ('foo'), ('bar')"
+
+  let rows ← db.execSqlSelect "SELECT DISTINCT name FROM tags"
+  rows.size ≡ 2
+
+test "execSqlSelect with ORDER BY DESC" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE nums (n INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO nums VALUES (3), (1), (2)"
+
+  let rows ← db.execSqlSelect "SELECT n FROM nums ORDER BY n DESC"
+  match rows[0]? with
+  | some r =>
+    match r.get? 0 with
+    | some (Quarry.Value.integer 3) => ensure true "first is 3"
+    | _ => throw (IO.userError "expected 3 first")
+  | none => throw (IO.userError "expected a row")
+
+test "execSqlSelect with LIMIT and OFFSET" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE items (n INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO items VALUES (1), (2), (3), (4), (5)"
+
+  let rows ← db.execSqlSelect "SELECT n FROM items ORDER BY n LIMIT 2 OFFSET 2"
+  rows.size ≡ 2
+  match rows[0]? with
+  | some r =>
+    match r.get? 0 with
+    | some (Quarry.Value.integer 3) => ensure true "starts at 3"
+    | _ => throw (IO.userError "expected 3")
+  | none => throw (IO.userError "expected a row")
+
+test "execSqlSelect with subquery" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1), (2), (3)"
+
+  let rows ← db.execSqlSelect "SELECT * FROM t WHERE x > (SELECT MIN(x) FROM t)"
   rows.size ≡ 2
 
 #generate_tests
@@ -185,70 +202,60 @@ test "select with GROUP BY and aggregate" := do
 end Tests.ChiselSelect
 
 -- ============================================================================
--- INSERT Execution Tests
+-- Unified SQL Execution Tests (INSERT)
 -- ============================================================================
 
 namespace Tests.ChiselInsert
 
 testSuite "Chisel INSERT Execution"
 
-test "execInsert single row" := do
+test "execSqlInsert single row" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
 
-  let stmt : Chisel.InsertStmt := {
-    table := "users"
-    columns := ["name"]
-    values := [[Expr.lit (Literal.string "Charlie")]]
-  }
-  db.execInsert stmt
+  let rowid ← db.execSqlInsert "INSERT INTO users (name) VALUES ('Charlie')"
+  rowid ≡ 1
 
-  let rows ← db.query "SELECT name FROM users"
-  rows.size ≡ 1
-
-test "execInsert multiple rows" := do
+test "execSqlInsert multiple rows" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (name TEXT)"
+  db.execSqlDdl "CREATE TABLE items (name TEXT)"
 
-  let stmt : Chisel.InsertStmt := {
-    table := "items"
-    columns := ["name"]
-    values := [
-      [Expr.lit (Literal.string "Item1")],
-      [Expr.lit (Literal.string "Item2")],
-      [Expr.lit (Literal.string "Item3")]
-    ]
-  }
-  db.execInsert stmt
-
+  let _ ← db.execSqlInsert "INSERT INTO items (name) VALUES ('Item1'), ('Item2'), ('Item3')"
   let rows ← db.query "SELECT * FROM items"
   rows.size ≡ 3
 
-test "execInsertReturning returns rowid" := do
+test "execSqlInsert returns rowid" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
 
-  let stmt : Chisel.InsertStmt := {
-    table := "users"
-    columns := ["name"]
-    values := [[Expr.lit (Literal.string "Dave")]]
-  }
-  let rowid ← db.execInsertReturning stmt
+  let rowid1 ← db.execSqlInsert "INSERT INTO users (name) VALUES ('Dave')"
+  let rowid2 ← db.execSqlInsert "INSERT INTO users (name) VALUES ('Eve')"
+  rowid1 ≡ 1
+  rowid2 ≡ 2
 
-  rowid ≡ 1
-
-test "execInsert with NULL value" := do
+test "execSqlInsert with NULL value" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (a TEXT, b TEXT)"
+  db.execSqlDdl "CREATE TABLE t (a TEXT, b TEXT)"
 
-  let stmt : Chisel.InsertStmt := {
-    table := "t"
-    columns := ["a", "b"]
-    values := [[Expr.lit (Literal.string "x"), Expr.lit Literal.null]]
-  }
-  db.execInsert stmt
-
+  let _ ← db.execSqlInsert "INSERT INTO t (a, b) VALUES ('x', NULL)"
   let rows ← db.query "SELECT * FROM t WHERE b IS NULL"
+  rows.size ≡ 1
+
+test "execSqlInsert with numeric values" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE nums (i INTEGER, f REAL)"
+
+  let _ ← db.execSqlInsert "INSERT INTO nums (i, f) VALUES (42, 3.14)"
+  let rows ← db.query "SELECT * FROM nums"
+  rows.size ≡ 1
+
+test "execSqlInsert with boolean expressions" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE flags (active INTEGER)"
+
+  let _ ← db.execSqlInsert "INSERT INTO flags (active) VALUES (1)"
+  let _ ← db.execSqlInsert "INSERT INTO flags (active) VALUES (0)"
+  let rows ← db.query "SELECT * FROM flags WHERE active = 1"
   rows.size ≡ 1
 
 #generate_tests
@@ -256,104 +263,115 @@ test "execInsert with NULL value" := do
 end Tests.ChiselInsert
 
 -- ============================================================================
--- UPDATE Execution Tests
+-- Unified SQL Execution Tests (UPDATE)
 -- ============================================================================
 
 namespace Tests.ChiselUpdate
 
 testSuite "Chisel UPDATE Execution"
 
-test "execUpdate single row" := do
+test "execSqlModify UPDATE single row" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
-  db.exec "INSERT INTO users (name) VALUES ('Alice')"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO users (name) VALUES ('Alice')"
 
-  let stmt : Chisel.UpdateStmt := {
-    table := "users"
-    set := [Assignment.mk "name" (Expr.lit (Literal.string "Alicia"))]
-    where_ := some (Expr.col "id" .== Expr.lit (Literal.int 1))
-  }
-  db.execUpdate stmt
+  let count ← db.execSqlModify "UPDATE users SET name = 'Alicia' WHERE id = 1"
+  count ≡ 1
 
   let rows ← db.query "SELECT name FROM users WHERE name = 'Alicia'"
   rows.size ≡ 1
 
-test "execUpdate all rows" := do
+test "execSqlModify UPDATE all rows" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (value INTEGER)"
-  db.exec "INSERT INTO items VALUES (1), (2), (3)"
+  db.execSqlDdl "CREATE TABLE items (value INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO items VALUES (1), (2), (3)"
 
-  let stmt : Chisel.UpdateStmt := {
-    table := "items"
-    set := [Assignment.mk "value" (Expr.col "value" .+ Expr.lit (Literal.int 10))]
-  }
-  db.execUpdate stmt
+  let count ← db.execSqlModify "UPDATE items SET value = value + 10"
+  count ≡ 3
 
   let rows ← db.query "SELECT * FROM items WHERE value > 10"
   rows.size ≡ 3
 
-test "execUpdateReturning returns count" := do
+test "execSqlModify UPDATE with expression" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (active INTEGER)"
-  db.exec "INSERT INTO items VALUES (0), (0), (1)"
+  db.execSqlDdl "CREATE TABLE products (price REAL)"
+  let _ ← db.execSqlInsert "INSERT INTO products VALUES (100.0), (200.0)"
 
-  let stmt : Chisel.UpdateStmt := {
-    table := "items"
-    set := [Assignment.mk "active" (Expr.lit (Literal.int 1))]
-    where_ := some (Expr.col "active" .== Expr.lit (Literal.int 0))
-  }
-  let count ← db.execUpdateReturning stmt
-
+  let count ← db.execSqlModify "UPDATE products SET price = price * 1.1"
   count ≡ 2
+
+test "execSqlModify UPDATE returns count" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE items (active INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO items VALUES (0), (0), (1)"
+
+  let count ← db.execSqlModify "UPDATE items SET active = 1 WHERE active = 0"
+  count ≡ 2
+
+test "execSqlModify UPDATE no matches" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1)"
+
+  let count ← db.execSqlModify "UPDATE t SET x = 99 WHERE x = 999"
+  count ≡ 0
 
 #generate_tests
 
 end Tests.ChiselUpdate
 
 -- ============================================================================
--- DELETE Execution Tests
+-- Unified SQL Execution Tests (DELETE)
 -- ============================================================================
 
 namespace Tests.ChiselDelete
 
 testSuite "Chisel DELETE Execution"
 
-test "execDelete with WHERE" := do
+test "execSqlModify DELETE with WHERE" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
-  db.exec "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie')"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie')"
 
-  let stmt : Chisel.DeleteStmt := {
-    table := "users"
-    where_ := some (Expr.col "name" .== Expr.lit (Literal.string "Bob"))
-  }
-  db.execDelete stmt
+  let count ← db.execSqlModify "DELETE FROM users WHERE name = 'Bob'"
+  count ≡ 1
 
   let rows ← db.query "SELECT * FROM users"
   rows.size ≡ 2
 
-test "execDelete all rows" := do
+test "execSqlModify DELETE all rows" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (x INTEGER)"
-  db.exec "INSERT INTO items VALUES (1), (2), (3)"
+  db.execSqlDdl "CREATE TABLE items (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO items VALUES (1), (2), (3)"
 
-  let stmt : Chisel.DeleteStmt := { table := "items" }
-  db.execDelete stmt
+  let count ← db.execSqlModify "DELETE FROM items"
+  count ≡ 3
 
   let rows ← db.query "SELECT * FROM items"
   rows.size ≡ 0
 
-test "execDeleteReturning returns count" := do
+test "execSqlModify DELETE returns count" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (category TEXT)"
-  db.exec "INSERT INTO items VALUES ('A'), ('A'), ('B')"
+  db.execSqlDdl "CREATE TABLE items (category TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO items VALUES ('A'), ('A'), ('B')"
 
-  let stmt : Chisel.DeleteStmt := {
-    table := "items"
-    where_ := some (Expr.col "category" .== Expr.lit (Literal.string "A"))
-  }
-  let count ← db.execDeleteReturning stmt
+  let count ← db.execSqlModify "DELETE FROM items WHERE category = 'A'"
+  count ≡ 2
 
+test "execSqlModify DELETE no matches" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1)"
+
+  let count ← db.execSqlModify "DELETE FROM t WHERE x = 999"
+  count ≡ 0
+
+test "execSqlModify DELETE with complex WHERE" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE products (name TEXT, price INTEGER, active INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO products VALUES ('A', 10, 1), ('B', 20, 0), ('C', 30, 0)"
+
+  let count ← db.execSqlModify "DELETE FROM products WHERE active = 0 AND price > 15"
   count ≡ 2
 
 #generate_tests
@@ -361,110 +379,97 @@ test "execDeleteReturning returns count" := do
 end Tests.ChiselDelete
 
 -- ============================================================================
--- DDL Execution Tests
+-- Unified SQL Execution Tests (DDL)
 -- ============================================================================
 
 namespace Tests.ChiselDDL
 
 testSuite "Chisel DDL Execution"
 
-test "execCreateTable basic" := do
+test "execSqlDdl CREATE TABLE basic" := do
   let db ← Database.openMemory
 
-  let stmt : Chisel.CreateTableStmt := {
-    name := "products"
-    columns := [
-      { name := "id", type := ColumnType.integer, constraints := [ColumnConstraint.primaryKey false] },
-      { name := "name", type := ColumnType.text, constraints := [ColumnConstraint.notNull] },
-      { name := "price", type := ColumnType.real, constraints := [] }
-    ]
-  }
-  db.execCreateTable stmt
+  db.execSqlDdl "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)"
 
   let rows ← db.query "SELECT name FROM sqlite_master WHERE type='table' AND name='products'"
   rows.size ≡ 1
 
-test "execCreateTable IF NOT EXISTS" := do
+test "execSqlDdl CREATE TABLE IF NOT EXISTS" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
 
-  let stmt : Chisel.CreateTableStmt := {
-    name := "t"
-    columns := [{ name := "y", type := ColumnType.text, constraints := [] }]
-    ifNotExists := true
-  }
-  db.execCreateTable stmt
+  db.execSqlDdl "CREATE TABLE IF NOT EXISTS t (y TEXT)"
   ensure true "no error on duplicate"
 
-test "execDropTable" := do
+test "execSqlDdl DROP TABLE" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
 
-  let stmt : Chisel.DropTableStmt := { table := "t" }
-  db.execDropTable stmt
+  db.execSqlDdl "DROP TABLE t"
 
   let rows ← db.query "SELECT name FROM sqlite_master WHERE type='table' AND name='t'"
   rows.size ≡ 0
 
-test "execDropTable IF EXISTS" := do
+test "execSqlDdl DROP TABLE IF EXISTS" := do
   let db ← Database.openMemory
 
-  let stmt : Chisel.DropTableStmt := { table := "nonexistent", ifExists := true }
-  db.execDropTable stmt
+  db.execSqlDdl "DROP TABLE IF EXISTS nonexistent"
   ensure true "no error on missing table"
 
-test "execCreateIndex" := do
+test "execSqlDdl CREATE INDEX" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER, email TEXT)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER, email TEXT)"
 
-  let stmt : Chisel.CreateIndexStmt := {
-    name := "idx_email"
-    table := "users"
-    columns := [("email", none)]
-  }
-  db.execCreateIndex stmt
+  db.execSqlDdl "CREATE INDEX idx_email ON users (email)"
 
   let rows ← db.query "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_email'"
   rows.size ≡ 1
 
-test "execCreateIndex UNIQUE" := do
+test "execSqlDdl CREATE UNIQUE INDEX" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER, email TEXT)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER, email TEXT)"
 
-  let stmt : Chisel.CreateIndexStmt := {
-    name := "idx_unique_email"
-    table := "users"
-    columns := [("email", none)]
-    unique := true
-  }
-  db.execCreateIndex stmt
+  db.execSqlDdl "CREATE UNIQUE INDEX idx_unique_email ON users (email)"
 
   let rows ← db.query "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_unique_email'"
   rows.size ≡ 1
 
-test "execDropIndex" := do
+test "execSqlDdl DROP INDEX" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "CREATE INDEX idx_x ON t (x)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  db.execSqlDdl "CREATE INDEX idx_x ON t (x)"
 
-  let stmt : Chisel.DropIndexStmt := { name := "idx_x" }
-  db.execDropIndex stmt
+  db.execSqlDdl "DROP INDEX idx_x"
 
   let rows ← db.query "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_x'"
   rows.size ≡ 0
 
-test "execAlterTable ADD COLUMN" := do
+test "execSqlDdl ALTER TABLE ADD COLUMN" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER)"
 
-  let stmt : Chisel.AlterTableStmt := {
-    table := "users"
-    operations := [AlterOp.addColumn { name := "email", type := ColumnType.text, constraints := [] }]
-  }
-  db.execAlterTable stmt
+  db.execSqlDdl "ALTER TABLE users ADD COLUMN email TEXT"
 
   let rows ← db.query "PRAGMA table_info(users)"
   rows.size ≡ 2
+
+test "execSqlDdl CREATE TABLE with constraints" := do
+  let db ← Database.openMemory
+
+  db.execSqlDdl "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, amount REAL)"
+
+  let rows ← db.query "SELECT name FROM sqlite_master WHERE type='table' AND name='orders'"
+  rows.size ≡ 1
+
+test "execSqlDdl CREATE TABLE with UNIQUE" := do
+  let db ← Database.openMemory
+
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE)"
+
+  -- Insert should work
+  let _ ← db.execSqlInsert "INSERT INTO users (email) VALUES ('test@test.com')"
+  let rows ← db.query "SELECT * FROM users"
+  rows.size ≡ 1
 
 #generate_tests
 
@@ -479,41 +484,107 @@ namespace Tests.ChiselParams
 testSuite "Chisel Parameter Binding"
 
 test "bindPositional expression" := do
-  -- Test that positional parameter binding works correctly
   match Chisel.Parser.Expr.parse "x = ? AND y = ?" with
   | .error e => throw (IO.userError s!"parse error: {e}")
   | .ok expr =>
-    match Chisel.Parser.bindPositional expr [Literal.int 1, Literal.int 2] with
+    match Chisel.Parser.bindPositional expr [Chisel.Literal.int 1, Chisel.Literal.int 2] with
     | .error e => throw (IO.userError s!"bind error: {e}")
     | .ok bound =>
       let sql := Chisel.renderExpr Quarry.sqliteContext bound
-      -- Should render to something like: ((x = 1) AND (y = 2))
       shouldSatisfy (sql.length > 0) "expression rendered"
 
 test "bindNamed expression" := do
-  -- Test that named parameter binding works correctly
   match Chisel.Parser.Expr.parse "value > :min" with
   | .error e => throw (IO.userError s!"parse error: {e}")
   | .ok expr =>
-    match Chisel.Parser.bindNamed expr [("min", Literal.int 15)] with
+    match Chisel.Parser.bindNamed expr [("min", Chisel.Literal.int 15)] with
     | .error e => throw (IO.userError s!"bind error: {e}")
     | .ok bound =>
       let sql := Chisel.renderExpr Quarry.sqliteContext bound
-      -- Should render to something like: (value > 15)
       shouldSatisfy (sql.length > 0) "expression rendered"
 
 test "bindIndexed expression" := do
-  -- Test that indexed parameter binding works correctly
   match Chisel.Parser.Expr.parse "a = $1 OR b = $2" with
   | .error e => throw (IO.userError s!"parse error: {e}")
   | .ok expr =>
-    match Chisel.Parser.bindIndexed expr #[Literal.int 10, Literal.int 20] with
+    match Chisel.Parser.bindIndexed expr #[Chisel.Literal.int 10, Chisel.Literal.int 20] with
     | .error e => throw (IO.userError s!"bind error: {e}")
     | .ok bound =>
       let sql := Chisel.renderExpr Quarry.sqliteContext bound
-      -- Should render to something like: ((a = 10) OR (b = 20))
       shouldSatisfy (sql.length > 0) "expression rendered"
 
 #generate_tests
 
 end Tests.ChiselParams
+
+-- ============================================================================
+-- execSql Unified API Tests
+-- ============================================================================
+
+namespace Tests.ChiselUnified
+
+testSuite "Chisel Unified execSql API"
+
+test "execSql SELECT returns rows" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1), (2)"
+
+  match ← db.execSql "SELECT * FROM t" with
+  | .rows data => data.size ≡ 2
+  | _ => throw (IO.userError "expected rows result")
+
+test "execSql INSERT returns rowid" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (id INTEGER PRIMARY KEY, x TEXT)"
+
+  match ← db.execSql "INSERT INTO t (x) VALUES ('test')" with
+  | .rowid id => id ≡ 1
+  | _ => throw (IO.userError "expected rowid result")
+
+test "execSql UPDATE returns changes" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1), (2), (3)"
+
+  match ← db.execSql "UPDATE t SET x = x + 10" with
+  | .changes n => n ≡ 3
+  | _ => throw (IO.userError "expected changes result")
+
+test "execSql DELETE returns changes" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1), (2)"
+
+  match ← db.execSql "DELETE FROM t WHERE x = 1" with
+  | .changes n => n ≡ 1
+  | _ => throw (IO.userError "expected changes result")
+
+test "execSql CREATE TABLE returns ok" := do
+  let db ← Database.openMemory
+
+  match ← db.execSql "CREATE TABLE newt (id INTEGER PRIMARY KEY)" with
+  | .ok => ensure true "DDL succeeded"
+  | _ => throw (IO.userError "expected ok result")
+
+test "execSql DROP TABLE returns ok" := do
+  let db ← Database.openMemory
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+
+  match ← db.execSql "DROP TABLE t" with
+  | .ok => ensure true "DDL succeeded"
+  | _ => throw (IO.userError "expected ok result")
+
+test "execSql parse error" := do
+  let db ← Database.openMemory
+
+  try
+    let _ ← db.execSql "NOT VALID SQL AT ALL !!!"
+    throw (IO.userError "expected parse error")
+  catch e =>
+    let msg := toString e
+    shouldSatisfy (String.containsSubstr msg "Parse error") "got parse error"
+
+#generate_tests
+
+end Tests.ChiselUnified

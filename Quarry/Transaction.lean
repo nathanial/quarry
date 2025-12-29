@@ -15,11 +15,11 @@ namespace Savepoint
 
 /-- Release the savepoint (commit nested transaction) -/
 def release (sp : Savepoint) : IO Unit :=
-  sp.db.exec s!"RELEASE SAVEPOINT {sp.name}"
+  sp.db.execRaw s!"RELEASE SAVEPOINT {sp.name}"
 
 /-- Rollback to savepoint -/
 def rollback (sp : Savepoint) : IO Unit :=
-  sp.db.exec s!"ROLLBACK TO SAVEPOINT {sp.name}"
+  sp.db.execRaw s!"ROLLBACK TO SAVEPOINT {sp.name}"
 
 end Savepoint
 
@@ -27,7 +27,7 @@ namespace Database
 
 /-- Create a savepoint for nested transaction -/
 def savepoint (db : Database) (name : String) : IO Savepoint := do
-  db.exec s!"SAVEPOINT {name}"
+  db.execRaw s!"SAVEPOINT {name}"
   return ⟨name, db⟩
 
 /-- Run a nested transaction with automatic rollback on error -/
@@ -43,35 +43,35 @@ def withSavepoint (db : Database) (name : String) (f : IO α) : IO α := do
 
 /-- Run read-only transaction (BEGIN DEFERRED) -/
 def readTransaction (db : Database) (f : IO α) : IO α := do
-  db.exec "BEGIN DEFERRED"
+  db.execRaw "BEGIN DEFERRED"
   try
     let result ← f
-    db.exec "COMMIT"
+    db.execRaw "COMMIT"
     return result
   catch e =>
-    db.exec "ROLLBACK"
+    db.execRaw "ROLLBACK"
     throw e
 
 /-- Run immediate write transaction (BEGIN IMMEDIATE) -/
 def writeTransaction (db : Database) (f : IO α) : IO α := do
-  db.exec "BEGIN IMMEDIATE"
+  db.execRaw "BEGIN IMMEDIATE"
   try
     let result ← f
-    db.exec "COMMIT"
+    db.execRaw "COMMIT"
     return result
   catch e =>
-    db.exec "ROLLBACK"
+    db.execRaw "ROLLBACK"
     throw e
 
 /-- Run exclusive transaction (BEGIN EXCLUSIVE) -/
 def exclusiveTransaction (db : Database) (f : IO α) : IO α := do
-  db.exec "BEGIN EXCLUSIVE"
+  db.execRaw "BEGIN EXCLUSIVE"
   try
     let result ← f
-    db.exec "COMMIT"
+    db.execRaw "COMMIT"
     return result
   catch e =>
-    db.exec "ROLLBACK"
+    db.execRaw "ROLLBACK"
     throw e
 
 end Database

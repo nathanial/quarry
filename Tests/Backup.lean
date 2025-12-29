@@ -14,8 +14,8 @@ testSuite "Backup API"
 test "backup to file" := do
   -- Create source database with data
   let srcDb ← Database.openMemory
-  srcDb.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
-  srcDb.exec "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie')"
+  srcDb.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  let _ ← srcDb.execSqlInsert "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie')"
 
   -- Remove any existing test file first
   let tmpPath := "/tmp/quarry_backup_test.db"
@@ -36,8 +36,8 @@ test "backup to file" := do
 test "backup between memory databases" := do
   -- Create source with data
   let srcDb ← Database.openMemory
-  srcDb.exec "CREATE TABLE items (id INTEGER, value TEXT)"
-  srcDb.exec "INSERT INTO items VALUES (1, 'one'), (2, 'two')"
+  srcDb.execSqlDdl "CREATE TABLE items (id INTEGER, value TEXT)"
+  let _ ← srcDb.execSqlInsert "INSERT INTO items VALUES (1, 'one'), (2, 'two')"
 
   -- Create empty destination
   let destDb ← Database.openMemory
@@ -52,10 +52,10 @@ test "backup between memory databases" := do
 test "incremental backup with progress" := do
   -- Create source with some data
   let srcDb ← Database.openMemory
-  srcDb.exec "CREATE TABLE data (id INTEGER PRIMARY KEY, content BLOB)"
+  srcDb.execSqlDdl "CREATE TABLE data (id INTEGER PRIMARY KEY, content BLOB)"
   -- Insert some rows to have multiple pages
   for _ in [:100] do
-    srcDb.exec "INSERT INTO data (content) VALUES (randomblob(1000))"
+    let _ ← srcDb.execSqlInsert "INSERT INTO data (content) VALUES (randomblob(1000))"
 
   let destDb ← Database.openMemory
   let backup ← srcDb.backupInit destDb
@@ -83,9 +83,9 @@ test "incremental backup with progress" := do
 
 test "backup progress percentage" := do
   let srcDb ← Database.openMemory
-  srcDb.exec "CREATE TABLE t (x INTEGER)"
+  srcDb.execSqlDdl "CREATE TABLE t (x INTEGER)"
   for i in [:50] do
-    srcDb.exec s!"INSERT INTO t VALUES ({i})"
+    let _ ← srcDb.execSqlInsert s!"INSERT INTO t VALUES ({i})"
 
   let destDb ← Database.openMemory
   let backup ← srcDb.backupInit destDb
@@ -107,16 +107,16 @@ test "backup empty database" := do
 
 test "backup preserves schema" := do
   let srcDb ← Database.openMemory
-  srcDb.exec "CREATE TABLE t1 (a INTEGER PRIMARY KEY, b TEXT NOT NULL)"
-  srcDb.exec "CREATE TABLE t2 (x REAL, y BLOB)"
-  srcDb.exec "CREATE INDEX idx_t1_b ON t1(b)"
+  srcDb.execSqlDdl "CREATE TABLE t1 (a INTEGER PRIMARY KEY, b TEXT NOT NULL)"
+  srcDb.execSqlDdl "CREATE TABLE t2 (x REAL, y BLOB)"
+  srcDb.execSqlDdl "CREATE INDEX idx_t1_b ON t1(b)"
 
   let destDb ← Database.openMemory
   srcDb.backupTo destDb
 
   -- Verify schema exists by inserting data
-  destDb.exec "INSERT INTO t1 (a, b) VALUES (1, 'test')"
-  destDb.exec "INSERT INTO t2 (x, y) VALUES (3.14, X'DEADBEEF')"
+  let _ ← destDb.execSqlInsert "INSERT INTO t1 (a, b) VALUES (1, 'test')"
+  let _ ← destDb.execSqlInsert "INSERT INTO t2 (x, y) VALUES (3.14, X'DEADBEEF')"
 
   let rows ← destDb.query "SELECT b FROM t1"
   match rows[0]?.bind (·.get? 0) with

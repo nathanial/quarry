@@ -86,12 +86,12 @@ test "foreign keys get/set" := do
 test "foreign keys enforcement" := do
   let db ← Database.openMemory
   db.setForeignKeys true
-  db.exec "CREATE TABLE parent (id INTEGER PRIMARY KEY)"
-  db.exec "CREATE TABLE child (id INTEGER, parent_id INTEGER REFERENCES parent(id))"
-  db.exec "INSERT INTO parent VALUES (1)"
-  db.exec "INSERT INTO child VALUES (1, 1)"  -- Valid FK
+  db.execSqlDdl "CREATE TABLE parent (id INTEGER PRIMARY KEY)"
+  db.execSqlDdl "CREATE TABLE child (id INTEGER, parent_id INTEGER REFERENCES parent(id))"
+  let _ ← db.execSqlInsert "INSERT INTO parent VALUES (1)"
+  let _ ← db.execSqlInsert "INSERT INTO child VALUES (1, 1)"  -- Valid FK
   try
-    db.exec "INSERT INTO child VALUES (2, 999)"  -- Invalid FK
+    let _ ← db.execSqlInsert "INSERT INTO child VALUES (2, 999)"  -- Invalid FK
     throw (IO.userError "should have failed FK constraint")
   catch _ =>
     ensure true "FK constraint enforced"
@@ -143,8 +143,8 @@ test "max page count get/set" := do
 
 test "page count and freelist" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (1)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1)"
   let pages ← db.getPageCount
   ensure (pages > 0) "has pages"
   let free ← db.getFreelistCount

@@ -52,7 +52,7 @@ test "insert via SQL" := do
       { name := "name", sqlType := "TEXT" }
     ]
   }
-  db.exec "INSERT INTO users VALUES (1, 'Bob')"
+  db.execRaw "INSERT INTO users VALUES (1, 'Bob')"
 
   let rows ← db.query "SELECT * FROM users"
   rows.size ≡ 1
@@ -73,7 +73,7 @@ test "multiple inserts" := do
   }
   let _ ← vtab.insert #[.text "Apples", .integer 10]
   let _ ← vtab.insert #[.text "Bananas", .integer 5]
-  db.exec "INSERT INTO items VALUES ('Cherries', 20)"
+  db.execRaw "INSERT INTO items VALUES ('Cherries', 20)"
 
   let rows ← db.query "SELECT * FROM items ORDER BY qty"
   rows.size ≡ 3
@@ -93,7 +93,7 @@ test "delete via SQL" := do
   let _ ← vtab.insert #[.integer 200]
   let _ ← vtab.insert #[.integer 300]
 
-  db.exec s!"DELETE FROM items WHERE rowid = {r1}"
+  db.execRaw s!"DELETE FROM items WHERE rowid = {r1}"
 
   let rows ← db.query "SELECT * FROM items ORDER BY val"
   rows.size ≡ 2
@@ -123,7 +123,7 @@ test "update via SQL" := do
   }
   let rowid ← vtab.insert #[.text "Alice", .integer 30]
 
-  db.exec s!"UPDATE users SET age = 31 WHERE rowid = {rowid}"
+  db.execRaw s!"UPDATE users SET age = 31 WHERE rowid = {rowid}"
 
   let rows ← db.query "SELECT * FROM users"
   rows.size ≡ 1
@@ -227,9 +227,9 @@ test "join with regular table" := do
   let db ← Database.openMemory
 
   -- Create regular table
-  db.exec "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT)"
-  db.exec "INSERT INTO categories VALUES (1, 'Fruit')"
-  db.exec "INSERT INTO categories VALUES (2, 'Vegetable')"
+  db.execSqlDdl "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO categories VALUES (1, 'Fruit')"
+  let _ ← db.execSqlInsert "INSERT INTO categories VALUES (2, 'Vegetable')"
 
   -- Create virtual table
   let vtab ← db.createArrayVTable "products" {
@@ -346,7 +346,7 @@ test "generator is read-only" := do
 
   -- Attempting to INSERT should fail
   try
-    db.exec "INSERT INTO readonly VALUES (999)"
+    db.execRaw "INSERT INTO readonly VALUES (999)"
     throw (IO.userError "Should have failed")
   catch _ =>
     ensure true "insert correctly rejected"

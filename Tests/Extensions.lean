@@ -16,17 +16,17 @@ testSuite "Full-Text Search (FTS5)"
 
 test "create FTS5 table" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(title, body)"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(title, body)"
   -- Table exists if we can query it
   let rows ← db.query "SELECT * FROM docs"
   rows.size ≡ 0
 
 test "insert and search" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(title, body)"
-  db.exec "INSERT INTO docs VALUES ('First Post', 'Hello world, this is my first blog post')"
-  db.exec "INSERT INTO docs VALUES ('Second Post', 'Another day, another post about programming')"
-  db.exec "INSERT INTO docs VALUES ('Recipe', 'How to make chocolate cake')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(title, body)"
+  db.execRaw "INSERT INTO docs VALUES ('First Post', 'Hello world, this is my first blog post')"
+  db.execRaw "INSERT INTO docs VALUES ('Second Post', 'Another day, another post about programming')"
+  db.execRaw "INSERT INTO docs VALUES ('Recipe', 'How to make chocolate cake')"
 
   -- Search for 'post'
   let rows ← db.query "SELECT title FROM docs WHERE docs MATCH 'post'"
@@ -34,10 +34,10 @@ test "insert and search" := do
 
 test "phrase search" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('the quick brown fox')"
-  db.exec "INSERT INTO docs VALUES ('quick fox jumps')"
-  db.exec "INSERT INTO docs VALUES ('the lazy dog')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('the quick brown fox')"
+  db.execRaw "INSERT INTO docs VALUES ('quick fox jumps')"
+  db.execRaw "INSERT INTO docs VALUES ('the lazy dog')"
 
   -- Phrase search with quotes
   let rows ← db.query "SELECT * FROM docs WHERE docs MATCH '\"quick brown\"'"
@@ -45,11 +45,11 @@ test "phrase search" := do
 
 test "prefix search" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(word)"
-  db.exec "INSERT INTO docs VALUES ('programming')"
-  db.exec "INSERT INTO docs VALUES ('program')"
-  db.exec "INSERT INTO docs VALUES ('progress')"
-  db.exec "INSERT INTO docs VALUES ('project')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(word)"
+  db.execRaw "INSERT INTO docs VALUES ('programming')"
+  db.execRaw "INSERT INTO docs VALUES ('program')"
+  db.execRaw "INSERT INTO docs VALUES ('progress')"
+  db.execRaw "INSERT INTO docs VALUES ('project')"
 
   -- Prefix search with *
   let rows ← db.query "SELECT * FROM docs WHERE docs MATCH 'prog*'"
@@ -57,10 +57,10 @@ test "prefix search" := do
 
 test "boolean operators" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('apple banana')"
-  db.exec "INSERT INTO docs VALUES ('apple orange')"
-  db.exec "INSERT INTO docs VALUES ('banana orange')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('apple banana')"
+  db.execRaw "INSERT INTO docs VALUES ('apple orange')"
+  db.execRaw "INSERT INTO docs VALUES ('banana orange')"
 
   -- AND (default)
   let andRows ← db.query "SELECT * FROM docs WHERE docs MATCH 'apple banana'"
@@ -76,9 +76,9 @@ test "boolean operators" := do
 
 test "column filter" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(title, body)"
-  db.exec "INSERT INTO docs VALUES ('Apple News', 'Read about oranges today')"
-  db.exec "INSERT INTO docs VALUES ('Orange News', 'Read about apples today')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(title, body)"
+  db.execRaw "INSERT INTO docs VALUES ('Apple News', 'Read about oranges today')"
+  db.execRaw "INSERT INTO docs VALUES ('Orange News', 'Read about apples today')"
 
   -- Search only in title column
   let rows ← db.query "SELECT * FROM docs WHERE docs MATCH 'title:apple'"
@@ -86,10 +86,10 @@ test "column filter" := do
 
 test "ranking with bm25" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('apple apple apple')"
-  db.exec "INSERT INTO docs VALUES ('apple')"
-  db.exec "INSERT INTO docs VALUES ('apple apple')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('apple apple apple')"
+  db.execRaw "INSERT INTO docs VALUES ('apple')"
+  db.execRaw "INSERT INTO docs VALUES ('apple apple')"
 
   -- Order by relevance (bm25 returns negative scores, more negative = more relevant)
   let rows ← db.query "SELECT content, bm25(docs) as score FROM docs WHERE docs MATCH 'apple' ORDER BY score"
@@ -104,8 +104,8 @@ test "ranking with bm25" := do
 
 test "highlight function" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('The quick brown fox jumps over')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('The quick brown fox jumps over')"
 
   let rows ← db.query "SELECT highlight(docs, 0, '<b>', '</b>') FROM docs WHERE docs MATCH 'quick'"
   rows.size ≡ 1
@@ -119,8 +119,8 @@ test "highlight function" := do
 
 test "snippet function" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('This is a very long document with many words and somewhere in the middle we mention programming which is the term we will search for')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('This is a very long document with many words and somewhere in the middle we mention programming which is the term we will search for')"
 
   let rows ← db.query "SELECT snippet(docs, 0, '[', ']', '...', 10) FROM docs WHERE docs MATCH 'programming'"
   rows.size ≡ 1
@@ -134,24 +134,24 @@ test "snippet function" := do
 
 test "delete from FTS table" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('first')"
-  db.exec "INSERT INTO docs VALUES ('second')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('first')"
+  db.execRaw "INSERT INTO docs VALUES ('second')"
 
   let before ← db.query "SELECT * FROM docs"
   before.size ≡ 2
 
-  db.exec "DELETE FROM docs WHERE content = 'first'"
+  db.execRaw "DELETE FROM docs WHERE content = 'first'"
 
   let after ← db.query "SELECT * FROM docs"
   after.size ≡ 1
 
 test "update FTS table" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE docs USING fts5(content)"
-  db.exec "INSERT INTO docs VALUES ('original')"
+  db.execRaw "CREATE VIRTUAL TABLE docs USING fts5(content)"
+  db.execRaw "INSERT INTO docs VALUES ('original')"
 
-  db.exec "UPDATE docs SET content = 'modified' WHERE content = 'original'"
+  db.execRaw "UPDATE docs SET content = 'modified' WHERE content = 'original'"
 
   let rows ← db.query "SELECT * FROM docs WHERE docs MATCH 'modified'"
   rows.size ≡ 1
@@ -167,30 +167,30 @@ testSuite "R-Tree (Spatial Indexing)"
 test "create R-Tree table" := do
   let db ← Database.openMemory
   -- R-Tree with 2D coordinates (minX, maxX, minY, maxY)
-  db.exec "CREATE VIRTUAL TABLE spatial USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE spatial USING rtree(id, minX, maxX, minY, maxY)"
   let rows ← db.query "SELECT * FROM spatial"
   rows.size ≡ 0
 
 test "insert and query points" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE locations USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE locations USING rtree(id, minX, maxX, minY, maxY)"
 
   -- Insert some points (for points, minX=maxX and minY=maxY)
-  db.exec "INSERT INTO locations VALUES (1, 10.0, 10.0, 20.0, 20.0)"  -- Point at (10, 20)
-  db.exec "INSERT INTO locations VALUES (2, 30.0, 30.0, 40.0, 40.0)"  -- Point at (30, 40)
-  db.exec "INSERT INTO locations VALUES (3, 50.0, 50.0, 60.0, 60.0)"  -- Point at (50, 60)
+  db.execRaw "INSERT INTO locations VALUES (1, 10.0, 10.0, 20.0, 20.0)"  -- Point at (10, 20)
+  db.execRaw "INSERT INTO locations VALUES (2, 30.0, 30.0, 40.0, 40.0)"  -- Point at (30, 40)
+  db.execRaw "INSERT INTO locations VALUES (3, 50.0, 50.0, 60.0, 60.0)"  -- Point at (50, 60)
 
   let rows ← db.query "SELECT id FROM locations"
   rows.size ≡ 3
 
 test "bounding box query" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE geo USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE geo USING rtree(id, minX, maxX, minY, maxY)"
 
   -- Insert rectangles
-  db.exec "INSERT INTO geo VALUES (1, 0, 10, 0, 10)"    -- Box at origin
-  db.exec "INSERT INTO geo VALUES (2, 20, 30, 20, 30)"  -- Box at (20,20)
-  db.exec "INSERT INTO geo VALUES (3, 5, 15, 5, 15)"    -- Overlaps with box 1
+  db.execRaw "INSERT INTO geo VALUES (1, 0, 10, 0, 10)"    -- Box at origin
+  db.execRaw "INSERT INTO geo VALUES (2, 20, 30, 20, 30)"  -- Box at (20,20)
+  db.execRaw "INSERT INTO geo VALUES (3, 5, 15, 5, 15)"    -- Overlaps with box 1
 
   -- Query for boxes that intersect with (0,0)-(12,12)
   let rows ← db.query "SELECT id FROM geo WHERE minX <= 12 AND maxX >= 0 AND minY <= 12 AND maxY >= 0"
@@ -198,13 +198,13 @@ test "bounding box query" := do
 
 test "contains query" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE areas USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE areas USING rtree(id, minX, maxX, minY, maxY)"
 
   -- Insert areas
-  db.exec "INSERT INTO areas VALUES (1, 0, 100, 0, 100)"   -- Large area
-  db.exec "INSERT INTO areas VALUES (2, 25, 75, 25, 75)"   -- Medium area inside large
-  db.exec "INSERT INTO areas VALUES (3, 40, 60, 40, 60)"   -- Small area inside medium
-  db.exec "INSERT INTO areas VALUES (4, 200, 300, 200, 300)" -- Separate area
+  db.execRaw "INSERT INTO areas VALUES (1, 0, 100, 0, 100)"   -- Large area
+  db.execRaw "INSERT INTO areas VALUES (2, 25, 75, 25, 75)"   -- Medium area inside large
+  db.execRaw "INSERT INTO areas VALUES (3, 40, 60, 40, 60)"   -- Small area inside medium
+  db.execRaw "INSERT INTO areas VALUES (4, 200, 300, 200, 300)" -- Separate area
 
   -- Find areas that contain point (50, 50)
   let rows ← db.query "SELECT id FROM areas WHERE minX <= 50 AND maxX >= 50 AND minY <= 50 AND maxY >= 50 ORDER BY id"
@@ -213,23 +213,23 @@ test "contains query" := do
 test "3D R-Tree" := do
   let db ← Database.openMemory
   -- R-Tree with 3D coordinates
-  db.exec "CREATE VIRTUAL TABLE space3d USING rtree(id, minX, maxX, minY, maxY, minZ, maxZ)"
+  db.execRaw "CREATE VIRTUAL TABLE space3d USING rtree(id, minX, maxX, minY, maxY, minZ, maxZ)"
 
-  db.exec "INSERT INTO space3d VALUES (1, 0, 10, 0, 10, 0, 10)"
-  db.exec "INSERT INTO space3d VALUES (2, 5, 15, 5, 15, 5, 15)"
+  db.execRaw "INSERT INTO space3d VALUES (1, 0, 10, 0, 10, 0, 10)"
+  db.execRaw "INSERT INTO space3d VALUES (2, 5, 15, 5, 15, 5, 15)"
 
   let rows ← db.query "SELECT id FROM space3d"
   rows.size ≡ 2
 
 test "nearest neighbor simulation" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE points USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE points USING rtree(id, minX, maxX, minY, maxY)"
 
   -- Insert some points
-  db.exec "INSERT INTO points VALUES (1, 0, 0, 0, 0)"      -- Origin
-  db.exec "INSERT INTO points VALUES (2, 10, 10, 10, 10)"  -- (10, 10)
-  db.exec "INSERT INTO points VALUES (3, 3, 3, 4, 4)"      -- (3, 4) - closest to (5,5)
-  db.exec "INSERT INTO points VALUES (4, 100, 100, 100, 100)" -- Far away
+  db.execRaw "INSERT INTO points VALUES (1, 0, 0, 0, 0)"      -- Origin
+  db.execRaw "INSERT INTO points VALUES (2, 10, 10, 10, 10)"  -- (10, 10)
+  db.execRaw "INSERT INTO points VALUES (3, 3, 3, 4, 4)"      -- (3, 4) - closest to (5,5)
+  db.execRaw "INSERT INTO points VALUES (4, 100, 100, 100, 100)" -- Far away
 
   -- Find points within distance 10 of (5, 5), ordered by distance
   -- Using simple distance approximation
@@ -245,27 +245,27 @@ test "nearest neighbor simulation" := do
 
 test "delete from R-Tree" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE boxes USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE boxes USING rtree(id, minX, maxX, minY, maxY)"
 
-  db.exec "INSERT INTO boxes VALUES (1, 0, 10, 0, 10)"
-  db.exec "INSERT INTO boxes VALUES (2, 20, 30, 20, 30)"
+  db.execRaw "INSERT INTO boxes VALUES (1, 0, 10, 0, 10)"
+  db.execRaw "INSERT INTO boxes VALUES (2, 20, 30, 20, 30)"
 
   let before ← db.query "SELECT * FROM boxes"
   before.size ≡ 2
 
-  db.exec "DELETE FROM boxes WHERE id = 1"
+  db.execRaw "DELETE FROM boxes WHERE id = 1"
 
   let after ← db.query "SELECT * FROM boxes"
   after.size ≡ 1
 
 test "update R-Tree" := do
   let db ← Database.openMemory
-  db.exec "CREATE VIRTUAL TABLE boxes USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE boxes USING rtree(id, minX, maxX, minY, maxY)"
 
-  db.exec "INSERT INTO boxes VALUES (1, 0, 10, 0, 10)"
+  db.execRaw "INSERT INTO boxes VALUES (1, 0, 10, 0, 10)"
 
   -- Move the box
-  db.exec "UPDATE boxes SET minX = 50, maxX = 60, minY = 50, maxY = 60 WHERE id = 1"
+  db.execRaw "UPDATE boxes SET minX = 50, maxX = 60, minY = 50, maxY = 60 WHERE id = 1"
 
   -- Should no longer be at origin
   let atOrigin ← db.query "SELECT id FROM boxes WHERE minX <= 5 AND maxX >= 5 AND minY <= 5 AND maxY >= 5"
@@ -278,11 +278,11 @@ test "update R-Tree" := do
 test "R-Tree with auxiliary columns" := do
   let db ← Database.openMemory
   -- R-Tree with auxiliary data column (prefixed with +)
-  db.exec "CREATE VIRTUAL TABLE places USING rtree(id, minX, maxX, minY, maxY, +name TEXT, +category TEXT)"
+  db.execRaw "CREATE VIRTUAL TABLE places USING rtree(id, minX, maxX, minY, maxY, +name TEXT, +category TEXT)"
 
-  db.exec "INSERT INTO places VALUES (1, -122.4, -122.4, 37.8, 37.8, 'San Francisco', 'city')"
-  db.exec "INSERT INTO places VALUES (2, -118.2, -118.2, 34.0, 34.0, 'Los Angeles', 'city')"
-  db.exec "INSERT INTO places VALUES (3, -73.9, -73.9, 40.7, 40.7, 'New York', 'city')"
+  db.execRaw "INSERT INTO places VALUES (1, -122.4, -122.4, 37.8, 37.8, 'San Francisco', 'city')"
+  db.execRaw "INSERT INTO places VALUES (2, -118.2, -118.2, 34.0, 34.0, 'Los Angeles', 'city')"
+  db.execRaw "INSERT INTO places VALUES (3, -73.9, -73.9, 40.7, 40.7, 'New York', 'city')"
 
   -- Query with auxiliary columns
   let rows ← db.query "SELECT name, category FROM places WHERE minX < -100"
@@ -292,16 +292,16 @@ test "join R-Tree with regular table" := do
   let db ← Database.openMemory
 
   -- Create R-Tree for spatial data
-  db.exec "CREATE VIRTUAL TABLE geo USING rtree(id, minX, maxX, minY, maxY)"
+  db.execRaw "CREATE VIRTUAL TABLE geo USING rtree(id, minX, maxX, minY, maxY)"
 
   -- Create regular table for metadata
-  db.exec "CREATE TABLE metadata (id INTEGER PRIMARY KEY, name TEXT, population INTEGER)"
+  db.execSqlDdl "CREATE TABLE metadata (id INTEGER PRIMARY KEY, name TEXT, population INTEGER)"
 
   -- Insert data
-  db.exec "INSERT INTO geo VALUES (1, 0, 10, 0, 10)"
-  db.exec "INSERT INTO geo VALUES (2, 20, 30, 20, 30)"
-  db.exec "INSERT INTO metadata VALUES (1, 'Area A', 1000)"
-  db.exec "INSERT INTO metadata VALUES (2, 'Area B', 2000)"
+  db.execRaw "INSERT INTO geo VALUES (1, 0, 10, 0, 10)"
+  db.execRaw "INSERT INTO geo VALUES (2, 20, 30, 20, 30)"
+  let _ ← db.execSqlInsert "INSERT INTO metadata VALUES (1, 'Area A', 1000)"
+  let _ ← db.execSqlInsert "INSERT INTO metadata VALUES (2, 'Area B', 2000)"
 
   -- Join query
   let rows ← db.query "

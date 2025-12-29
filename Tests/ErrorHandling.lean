@@ -14,15 +14,16 @@ testSuite "Error Handling"
 test "bad SQL syntax error" := do
   let db ← Database.openMemory
   try
-    db.exec "NOT VALID SQL"
+    -- Use execRaw to test raw SQL error handling
+    db.execRaw "NOT VALID SQL"
     throw (IO.userError "should have failed")
   catch _ =>
     ensure true "caught error"
 
 test "columnNotFound error" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (1)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1)"
   let rows ← db.query "SELECT x FROM t"
   match rows[0]? with
   | some row =>
@@ -34,8 +35,8 @@ test "columnNotFound error" := do
 
 test "type extraction error" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x TEXT)"
-  db.exec "INSERT INTO t VALUES ('not a number')"
+  db.execSqlDdl "CREATE TABLE t (x TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES ('not a number')"
   let rows ← db.query "SELECT x FROM t"
   match rows[0]? with
   | some row =>

@@ -141,7 +141,7 @@ namespace Database
       ]
     }
     vtab.insert #[.integer 1, .text "Alice"]
-    db.exec "INSERT INTO users VALUES (2, 'Bob')"
+    db.execSqlInsert "INSERT INTO users VALUES (2, 'Bob')"
     let rows ← db.query "SELECT * FROM users"
     ``` -/
 def createArrayVTable (db : Database) (name : String) (schema : VTableSchema)
@@ -164,8 +164,8 @@ def createArrayVTable (db : Database) (name : String) (schema : VTableSchema)
     VirtualTable.ArrayTableData.cursorRowid
     VirtualTable.ArrayTableData.handleUpdate
 
-  -- Create the virtual table instance
-  db.exec s!"CREATE VIRTUAL TABLE {name} USING {name}"
+  -- Create the virtual table instance (execRaw needed for VIRTUAL TABLE syntax)
+  db.execRaw s!"CREATE VIRTUAL TABLE {name} USING {name}"
 
   pure data
 

@@ -13,8 +13,8 @@ testSuite "Value Extraction"
 
 test "extract int" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (42)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (42)"
   let rows ← db.query "SELECT x FROM t"
   match rows[0]? with
   | some row =>
@@ -25,8 +25,8 @@ test "extract int" := do
 
 test "extract string by name" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (name TEXT)"
-  db.exec "INSERT INTO t VALUES ('Alice')"
+  db.execSqlDdl "CREATE TABLE t (name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES ('Alice')"
   let rows ← db.query "SELECT name FROM t"
   match rows[0]? with
   | some row =>
@@ -37,8 +37,8 @@ test "extract string by name" := do
 
 test "extract option for null" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (NULL)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (NULL)"
   let rows ← db.query "SELECT x FROM t"
   match rows[0]? with
   | some row =>
@@ -58,8 +58,8 @@ testSuite "Row Access"
 
 test "column names" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)"
-  db.exec "INSERT INTO users VALUES (1, 'Alice', 30)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO users VALUES (1, 'Alice', 30)"
   let rows ← db.query "SELECT id, name, age FROM users"
   match rows[0]? with
   | some row =>
@@ -72,8 +72,8 @@ test "column names" := do
 
 test "access by name case insensitive" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (MyColumn TEXT)"
-  db.exec "INSERT INTO t VALUES ('value')"
+  db.execSqlDdl "CREATE TABLE t (MyColumn TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES ('value')"
   let rows ← db.query "SELECT MyColumn FROM t"
   match rows[0]? with
   | some row =>
@@ -134,8 +134,8 @@ testSuite "Row Utilities"
 
 test "row size" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (a INTEGER, b TEXT, c REAL)"
-  db.exec "INSERT INTO t VALUES (1, 'hi', 3.14)"
+  db.execSqlDdl "CREATE TABLE t (a INTEGER, b TEXT, c REAL)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (1, 'hi', 3.14)"
   let rows ← db.query "SELECT * FROM t"
   match rows[0]? with
   | some row => row.size ≡ 3
@@ -143,8 +143,8 @@ test "row size" := do
 
 test "columnName by index" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER, name TEXT)"
-  db.exec "INSERT INTO users VALUES (1, 'Alice')"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER, name TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO users VALUES (1, 'Alice')"
   let rows ← db.query "SELECT id, name FROM users"
   match rows[0]? with
   | some row =>
@@ -155,8 +155,8 @@ test "columnName by index" := do
 
 test "getByNameAsOption" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (x INTEGER)"
-  db.exec "INSERT INTO t VALUES (NULL)"
+  db.execSqlDdl "CREATE TABLE t (x INTEGER)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (NULL)"
   let rows ← db.query "SELECT x FROM t"
   match rows[0]? with
   | some row =>
@@ -176,7 +176,7 @@ testSuite "Column Metadata"
 
 test "column metadata from table column" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
   let stmt ← db.prepare "SELECT id, name FROM users"
   let meta0 ← Database.columnMetadata stmt 0
   let meta1 ← Database.columnMetadata stmt 1
@@ -188,7 +188,7 @@ test "column metadata from table column" := do
 
 test "column metadata for aliased column" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (value INTEGER)"
+  db.execSqlDdl "CREATE TABLE t (value INTEGER)"
   let stmt ← db.prepare "SELECT value AS v FROM t"
   let m ← Database.columnMetadata stmt 0
   -- Origin name should be the original column name, not the alias
@@ -197,7 +197,7 @@ test "column metadata for aliased column" := do
 
 test "column metadata for expression" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (a INTEGER, b INTEGER)"
+  db.execSqlDdl "CREATE TABLE t (a INTEGER, b INTEGER)"
   let stmt ← db.prepare "SELECT a + b FROM t"
   let m ← Database.columnMetadata stmt 0
   -- Expressions don't have source table/column info
@@ -215,7 +215,7 @@ test "column metadata for literal" := do
 
 test "allColumnMetadata" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE items (id INTEGER, name TEXT, price REAL)"
+  db.execSqlDdl "CREATE TABLE items (id INTEGER, name TEXT, price REAL)"
   let stmt ← db.prepare "SELECT id, name, price FROM items"
   let metas ← Database.allColumnMetadata stmt
   metas.size ≡ 3

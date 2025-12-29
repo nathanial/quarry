@@ -173,8 +173,8 @@ def registerGenerator (db : Database) (name : String) (gen : VirtualTable.Genera
     rowidFn
     updateFn
 
-  -- Create the virtual table instance
-  db.exec s!"CREATE VIRTUAL TABLE {name} USING {name}"
+  -- Create the virtual table instance (execRaw needed for VIRTUAL TABLE syntax)
+  db.execRaw s!"CREATE VIRTUAL TABLE {name} USING {name}"
 
 end Database
 

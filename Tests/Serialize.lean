@@ -19,9 +19,9 @@ test "serialize empty database" := do
 
 test "serialize and deserialize roundtrip" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)"
-  db.exec "INSERT INTO t (val) VALUES ('hello')"
-  db.exec "INSERT INTO t (val) VALUES ('world')"
+  db.execSqlDdl "CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO t (val) VALUES ('hello')"
+  let _ ← db.execSqlInsert "INSERT INTO t (val) VALUES ('world')"
 
   let bytes ← db.serialize
 
@@ -31,13 +31,13 @@ test "serialize and deserialize roundtrip" := do
 
 test "clone database" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)"
-  db.exec "INSERT INTO t (val) VALUES ('original')"
+  db.execSqlDdl "CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO t (val) VALUES ('original')"
 
   let clone ← db.clone
 
   -- Modify original
-  db.exec "UPDATE t SET val = 'modified'"
+  let _ ← db.execSqlModify "UPDATE t SET val = 'modified'"
 
   -- Clone should still have original value
   let rows ← clone.query "SELECT val FROM t"
@@ -47,12 +47,12 @@ test "clone database" := do
 
 test "deserialize into existing connection" := do
   let db1 ← Database.openMemory
-  db1.exec "CREATE TABLE t (val TEXT)"
-  db1.exec "INSERT INTO t VALUES ('from db1')"
+  db1.execSqlDdl "CREATE TABLE t (val TEXT)"
+  let _ ← db1.execSqlInsert "INSERT INTO t VALUES ('from db1')"
   let bytes ← db1.serialize
 
   let db2 ← Database.openMemory
-  db2.exec "CREATE TABLE other (x INTEGER)"
+  db2.execSqlDdl "CREATE TABLE other (x INTEGER)"
   db2.deserializeInto bytes
 
   -- db2 should now have t, not other
@@ -61,8 +61,8 @@ test "deserialize into existing connection" := do
 
 test "readonly deserialize prevents writes" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (val TEXT)"
-  db.exec "INSERT INTO t VALUES ('test')"
+  db.execSqlDdl "CREATE TABLE t (val TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES ('test')"
   let bytes ← db.serialize
 
   let db2 ← Database.deserialize bytes (readOnly := true)
@@ -73,15 +73,15 @@ test "readonly deserialize prevents writes" := do
 
   -- Writing should fail
   try
-    db2.exec "INSERT INTO t VALUES ('new')"
+    let _ ← db2.execSqlInsert "INSERT INTO t VALUES ('new')"
     throw (IO.userError "expected write to fail")
   catch _ =>
     ensure true "write correctly rejected"
 
 test "serialize preserves data types" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE t (i INTEGER, r REAL, t TEXT, b BLOB)"
-  db.exec "INSERT INTO t VALUES (42, 3.14, 'hello', X'DEADBEEF')"
+  db.execSqlDdl "CREATE TABLE t (i INTEGER, r REAL, t TEXT, b BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO t VALUES (42, 3.14, 'hello', X'DEADBEEF')"
 
   let bytes ← db.serialize
   let db2 ← Database.deserialize bytes
@@ -105,12 +105,12 @@ test "serialize preserves data types" := do
 
 test "multiple tables roundtrip" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
-  db.exec "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT)"
-  db.exec "INSERT INTO users VALUES (1, 'Alice')"
-  db.exec "INSERT INTO users VALUES (2, 'Bob')"
-  db.exec "INSERT INTO posts VALUES (1, 1, 'Hello')"
-  db.exec "INSERT INTO posts VALUES (2, 2, 'World')"
+  db.execSqlDdl "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+  db.execSqlDdl "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT)"
+  let _ ← db.execSqlInsert "INSERT INTO users VALUES (1, 'Alice')"
+  let _ ← db.execSqlInsert "INSERT INTO users VALUES (2, 'Bob')"
+  let _ ← db.execSqlInsert "INSERT INTO posts VALUES (1, 1, 'Hello')"
+  let _ ← db.execSqlInsert "INSERT INTO posts VALUES (2, 2, 'World')"
 
   let bytes ← db.serialize
   let db2 ← Database.deserialize bytes

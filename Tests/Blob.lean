@@ -14,8 +14,8 @@ testSuite "Incremental BLOB I/O"
 
 test "open and read blob" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'48454C4C4F')"  -- "HELLO"
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'48454C4C4F')"  -- "HELLO"
 
   let blob ← db.openBlob "files" "content" 1
   let data ← blob.readAll
@@ -27,8 +27,8 @@ test "open and read blob" := do
 
 test "write to blob" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'0000000000')"  -- 5 zero bytes
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'0000000000')"  -- 5 zero bytes
 
   let blob ← db.openBlob "files" "content" 1 .readWrite
   blob.write 0 (ByteArray.mk #[0x41, 0x42, 0x43])  -- "ABC"
@@ -46,9 +46,9 @@ test "write to blob" := do
 
 test "read partial blob" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
   -- Insert "HELLO WORLD" as hex
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'48454C4C4F20574F524C44')"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'48454C4C4F20574F524C44')"
 
   let blob ← db.openBlob "files" "content" 1
   let chunk ← blob.read 6 5  -- Read "WORLD"
@@ -59,8 +59,8 @@ test "read partial blob" := do
 
 test "blob bytes size" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'0102030405060708090A')"  -- 10 bytes
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'0102030405060708090A')"  -- 10 bytes
 
   let blob ← db.openBlob "files" "content" 1
   let size ← blob.bytes
@@ -70,9 +70,9 @@ test "blob bytes size" := do
 
 test "reopen for different row" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'4141')"  -- "AA"
-  db.exec "INSERT INTO files (id, content) VALUES (2, X'4242')"  -- "BB"
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'4141')"  -- "AA"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (2, X'4242')"  -- "BB"
 
   let blob ← db.openBlob "files" "content" 1
   let data1 ← blob.readAll
@@ -86,8 +86,8 @@ test "reopen for different row" := do
 
 test "read-only mode prevents writes" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'4141')"
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'4141')"
 
   let blob ← db.openBlob "files" "content" 1 .readOnly
   try
@@ -100,8 +100,8 @@ test "read-only mode prevents writes" := do
 
 test "close is idempotent" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'4141')"
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'4141')"
 
   let blob ← db.openBlob "files" "content" 1
   blob.close
@@ -110,8 +110,8 @@ test "close is idempotent" := do
 
 test "blob with empty data" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'')"  -- Empty blob
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'')"  -- Empty blob
 
   let blob ← db.openBlob "files" "content" 1
   let size ← blob.bytes
@@ -123,11 +123,11 @@ test "blob with empty data" := do
 
 test "large blob streaming" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
 
   -- Create a 10KB blob filled with zeroes using zeroblob
   let size := 10240
-  db.exec s!"INSERT INTO files (id, content) VALUES (1, zeroblob({size}))"
+  let _ ← db.execSqlInsert s!"INSERT INTO files (id, content) VALUES (1, zeroblob({size}))"
 
   -- Write in chunks
   let blob ← db.openBlob "files" "content" 1 .readWrite
@@ -152,8 +152,8 @@ test "large blob streaming" := do
 
 test "write at offset" := do
   let db ← Database.openMemory
-  db.exec "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
-  db.exec "INSERT INTO files (id, content) VALUES (1, X'0000000000000000')"  -- 8 zero bytes
+  db.execSqlDdl "CREATE TABLE files (id INTEGER PRIMARY KEY, content BLOB)"
+  let _ ← db.execSqlInsert "INSERT INTO files (id, content) VALUES (1, X'0000000000000000')"  -- 8 zero bytes
 
   let blob ← db.openBlob "files" "content" 1 .readWrite
   blob.write 3 (ByteArray.mk #[0xFF, 0xFF])  -- Write at offset 3

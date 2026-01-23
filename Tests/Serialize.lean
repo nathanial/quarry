@@ -126,6 +126,4 @@ test "multiple tables roundtrip" := do
   | some (Value.integer n) => n ≡ 2
   | _ => throw (IO.userError "expected post count")
 
-#generate_tests
-
 end Tests.Serialize

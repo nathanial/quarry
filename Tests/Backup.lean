@@ -123,6 +123,4 @@ test "backup preserves schema" := do
   | some (Value.text "test") => ensure true "schema preserved"
   | _ => throw (IO.userError "schema not preserved")
 
-#generate_tests
-
 end Tests.Backup

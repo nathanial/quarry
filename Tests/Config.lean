@@ -63,8 +63,6 @@ test "interrupt sets flag" := do
   -- Note: flag may be cleared after check, so we just verify the call works
   ensure true "interrupt call succeeded"
 
-#generate_tests
-
 end Tests.Configuration
 
 namespace Tests.PragmaHelpers
@@ -155,7 +153,5 @@ test "synchronous get/set roundtrip" := do
   db.setSynchronous .off
   let mode ← db.getSynchronous
   mode ≡ Database.SyncMode.off
-
-#generate_tests
 
 end Tests.PragmaHelpers

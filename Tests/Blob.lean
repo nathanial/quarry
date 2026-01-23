@@ -169,6 +169,4 @@ test "write at offset" := do
   data.data[5]! ≡ 0x00
   blob2.close
 
-#generate_tests
-
 end Tests.Blob

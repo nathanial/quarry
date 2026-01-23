@@ -87,8 +87,6 @@ test "Value.text roundtrip" := do
   | .string "world" => ensure true "text roundtrip"
   | _ => throw (IO.userError "expected string")
 
-#generate_tests
-
 end Tests.Chisel
 
 -- ============================================================================
@@ -197,8 +195,6 @@ test "execSqlSelect with subquery" := do
   let rows ← db.execSqlSelect "SELECT * FROM t WHERE x > (SELECT MIN(x) FROM t)"
   rows.size ≡ 2
 
-#generate_tests
-
 end Tests.ChiselSelect
 
 -- ============================================================================
@@ -258,8 +254,6 @@ test "execSqlInsert with boolean expressions" := do
   let rows ← db.query "SELECT * FROM flags WHERE active = 1"
   rows.size ≡ 1
 
-#generate_tests
-
 end Tests.ChiselInsert
 
 -- ============================================================================
@@ -316,8 +310,6 @@ test "execSqlModify UPDATE no matches" := do
   let count ← db.execSqlModify "UPDATE t SET x = 99 WHERE x = 999"
   count ≡ 0
 
-#generate_tests
-
 end Tests.ChiselUpdate
 
 -- ============================================================================
@@ -373,8 +365,6 @@ test "execSqlModify DELETE with complex WHERE" := do
 
   let count ← db.execSqlModify "DELETE FROM products WHERE active = 0 AND price > 15"
   count ≡ 2
-
-#generate_tests
 
 end Tests.ChiselDelete
 
@@ -471,8 +461,6 @@ test "execSqlDdl CREATE TABLE with UNIQUE" := do
   let rows ← db.query "SELECT * FROM users"
   rows.size ≡ 1
 
-#generate_tests
-
 end Tests.ChiselDDL
 
 -- ============================================================================
@@ -512,8 +500,6 @@ test "bindIndexed expression" := do
     | .ok bound =>
       let sql := Chisel.renderExpr Quarry.sqliteContext bound
       shouldSatisfy (sql.length > 0) "expression rendered"
-
-#generate_tests
 
 end Tests.ChiselParams
 
@@ -584,7 +570,5 @@ test "execSql parse error" := do
   catch e =>
     let msg := toString e
     shouldSatisfy (String.containsSubstr msg "Parse error") "got parse error"
-
-#generate_tests
 
 end Tests.ChiselUnified

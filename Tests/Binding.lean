@@ -92,8 +92,6 @@ test "bind null value" := do
     | _ => throw (IO.userError "expected null")
   | none => throw (IO.userError "no row")
 
-#generate_tests
-
 end Tests.Binding
 
 namespace Tests.TypeConversion
@@ -200,7 +198,5 @@ test "ToSql Bool via binding" := do
     | some (Value.integer 1) => ensure true "Bool bound as 1"
     | _ => throw (IO.userError "expected 1")
   | none => throw (IO.userError "no row")
-
-#generate_tests
 
 end Tests.TypeConversion

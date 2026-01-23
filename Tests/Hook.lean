@@ -125,6 +125,4 @@ test "replacing hook cleans up old one" := do
   count1 ≡ 1
   count2 ≡ 1
 
-#generate_tests
-
 end Tests.Hook

@@ -156,8 +156,6 @@ test "update FTS table" := do
   let rows ← db.query "SELECT * FROM docs WHERE docs MATCH 'modified'"
   rows.size ≡ 1
 
-#generate_tests
-
 end Tests.FTS5
 
 namespace Tests.RTree
@@ -317,7 +315,5 @@ test "join R-Tree with regular table" := do
     | some (.text "Area A") => ensure true "correct area"
     | _ => throw (IO.userError "unexpected value")
   | none => throw (IO.userError "no row")
-
-#generate_tests
 
 end Tests.RTree

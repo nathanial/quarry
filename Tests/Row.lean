@@ -48,8 +48,6 @@ test "extract option for null" := do
     | .error e => throw (IO.userError s!"extraction failed: {e}")
   | none => throw (IO.userError "no row")
 
-#generate_tests
-
 end Tests.Extract
 
 namespace Tests.Row
@@ -81,8 +79,6 @@ test "access by name case insensitive" := do
     | some (Value.text "value") => ensure true "case insensitive access works"
     | _ => throw (IO.userError "column not found")
   | none => throw (IO.userError "no row")
-
-#generate_tests
 
 end Tests.Row
 
@@ -124,8 +120,6 @@ test "BEq Value" := do
   ensure (Value.null == Value.null) "nulls equal"
   ensure (!(Value.integer 1 == Value.integer 2)) "different integers"
 
-#generate_tests
-
 end Tests.ValueUtils
 
 namespace Tests.RowUtils
@@ -165,8 +159,6 @@ test "getByNameAsOption" := do
     | .ok (some _) => throw (IO.userError "expected none")
     | .error e => throw (IO.userError s!"failed: {e}")
   | none => throw (IO.userError "no row")
-
-#generate_tests
 
 end Tests.RowUtils
 
@@ -230,7 +222,5 @@ test "ColumnMetadata toString" := do
   ensure (m2.toString == "t.x") "without database"
   let m3 : ColumnMetadata := { database := none, table := none, originName := none }
   ensure (m3.toString == "(expression)") "expression fallback"
-
-#generate_tests
 
 end Tests.ColumnMetadata

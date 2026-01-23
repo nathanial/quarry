@@ -5,7 +5,7 @@ package quarry where
   version := v!"0.1.0"
   precompileModules := true
 
-require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.8"
+require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.9"
 require staple from git "https://github.com/nathanial/staple" @ "v0.0.2"
 require chisel from git "https://github.com/nathanial/chisel" @ "v0.0.3"
 

@@ -245,7 +245,6 @@ test "join with regular table" := do
   let rows ← db.query "SELECT p.name, c.name FROM products p JOIN categories c ON p.category_id = c.id ORDER BY p.name"
   rows.size ≡ 2
 
-#generate_tests
 
 end Tests.VirtualTable
 
@@ -397,7 +396,5 @@ test "generator with custom rowid" := do
       ensure true "custom rowids work"
     | _, _, _, _ => throw (IO.userError "unexpected values")
   | _, _ => throw (IO.userError "missing rows")
-
-#generate_tests
 
 end Tests.Generator

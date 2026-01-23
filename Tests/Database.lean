@@ -54,8 +54,6 @@ test "query one" := do
     | _ => throw (IO.userError "unexpected value")
   | none => throw (IO.userError "no row found")
 
-#generate_tests
-
 end Tests.Database
 
 namespace Tests.Values
@@ -126,8 +124,6 @@ test "blob value" := do
     | _ => throw (IO.userError "Expected blob")
   | none => throw (IO.userError "no row")
 
-#generate_tests
-
 end Tests.Values
 
 namespace Tests.Transactions
@@ -179,8 +175,6 @@ test "savepoint rollback" := do
   let rows ← db.query "SELECT * FROM t"
   rows.size ≡ 1
 
-#generate_tests
-
 end Tests.Transactions
 
 namespace Tests.TransactionVariants
@@ -210,7 +204,5 @@ test "exclusive transaction" := do
     let _ ← db.execSqlInsert "INSERT INTO t VALUES (1)"
   let rows ← db.query "SELECT * FROM t"
   rows.size ≡ 1
-
-#generate_tests
 
 end Tests.TransactionVariants

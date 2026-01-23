@@ -46,6 +46,4 @@ test "type extraction error" := do
     | .ok _ => throw (IO.userError "should have failed")
   | none => throw (IO.userError "no row")
 
-#generate_tests
-
 end Tests.ErrorHandling

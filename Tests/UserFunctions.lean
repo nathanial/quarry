@@ -245,6 +245,4 @@ test "function error returns null" := do
   | some Value.null => ensure true "type mismatch returns null"
   | _ => throw (IO.userError "expected null on type mismatch")
 
-#generate_tests
-
 end Tests.UserFunctions
